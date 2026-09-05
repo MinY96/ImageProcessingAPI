@@ -1,0 +1,42 @@
+# ============================================================
+# Python: 3.12.10
+# ============================================================
+
+# Core
+numpy==2.5.2
+pandas==3.0.5
+
+# Scientific / Machine Learning
+scipy==1.18.1
+scikit-learn==1.9.0
+
+# Computer Vision
+opencv-python==4.14.0.94
+Pillow==12.3.0
+
+# Deep Learning
+torch==2.13.0
+torchvision==0.28.0
+
+# Database
+psycopg[binary]==3.3.4
+oracledb==2.4.1
+
+# Visualization / Excel
+matplotlib==3.11.1
+openpyxl==3.1.5
+
+pydantic==2.13.5
+
+# API
+fastapi==0.141.1
+uvicorn==0.52.4
+python-multipart==0.0.32
+
+# Test
+pytest>=8.0,<10
+httpx==0.28.1
+
+# Notebook (optional)
+jupyterlab>=4.4,<5
+ipykernel>=6.29,<8
