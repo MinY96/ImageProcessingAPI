@@ -138,3 +138,6 @@ $RECYCLE.BIN/
 # datasets/
 # images/
 # models/
+
+# Local Recipe / Label persistence
+.image_processing_data/
