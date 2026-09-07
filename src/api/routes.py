@@ -23,6 +23,7 @@ from src.schemas import OperationSpec, PipelineSpec
 
 from .errors import ApiRequestError
 from .input_codec import decode_request_inputs, parse_form_payload
+from .label_routes import create_label_router
 from .models import (
     AdHocPipelineRunPayload,
     OperationRunPayload,
@@ -30,6 +31,7 @@ from .models import (
     PipelineValidationResponse,
     ResponseFormat,
 )
+from .recipe_routes import create_recipe_router
 from .output_codec import (
     render_operation_result,
     render_pipeline_result,
@@ -286,4 +288,6 @@ def create_router(prefix: str) -> APIRouter:
             settings=services.settings,
         )
 
+    router.include_router(create_recipe_router("", get_services))
+    router.include_router(create_label_router("", get_services))
     return router

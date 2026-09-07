@@ -72,3 +72,11 @@ class PipelineCatalog:
     def contains(self, name: str) -> bool:
         with self._lock:
             return name in self._pipelines
+
+    def unregister(self, name: str) -> None:
+        with self._lock:
+            if name not in self._pipelines:
+                raise PipelineNotFoundError(
+                    f"pipeline is not registered: {name}"
+                )
+            del self._pipelines[name]

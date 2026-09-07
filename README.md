@@ -122,6 +122,9 @@ Registry/Pipeline에 연결됩니다.
 - PNG를 base64로 담은 JSON 또는 이미지와 manifest를 묶은 ZIP 출력
 - 업로드 크기, 이미지 픽셀 수, 디코딩 메모리 및 응답 크기 제한
 - 일관된 오류 응답과 OpenAPI 문서 제공
+- built-in/user Recipe 조회·생성·복제·수정·삭제·실행 및 JSON 영속화
+- 이미지별 Label 문서와 bbox/polygon/point/polyline annotation CRUD
+- Recipe/Label revision 기반 충돌 감지(낙관적 잠금)
 
 ## 실행 흐름
 
@@ -299,6 +302,22 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `POST` | `/api/v1/pipelines/validate` | PipelineSpec 사전 검증 |
 | `POST` | `/api/v1/pipelines/execute` | ad-hoc pipeline 실행 |
 | `POST` | `/api/v1/pipelines/{name}/execute` | 등록된 pipeline 실행 |
+| `GET` | `/api/v1/recipes` | Recipe 목록/검색 (`builtin`, `user`) |
+| `POST` | `/api/v1/recipes` | 사용자 Recipe 생성 |
+| `GET` | `/api/v1/recipes/{name}` | Recipe 상세 조회 |
+| `POST` | `/api/v1/recipes/{name}/clone` | built-in/user Recipe를 사용자 Recipe로 복제 |
+| `PUT` | `/api/v1/recipes/{name}` | 사용자 Recipe 수정 |
+| `DELETE` | `/api/v1/recipes/{name}` | 사용자 Recipe 삭제 |
+| `POST` | `/api/v1/recipes/{name}/execute` | Recipe 실행 |
+| `GET` | `/api/v1/labels` | Label 문서 목록/검색/페이징 |
+| `POST` | `/api/v1/labels` | 이미지 Label 문서 생성 |
+| `GET` | `/api/v1/labels/classes` | 현재 annotation class 통계 |
+| `GET` | `/api/v1/labels/{image_id}` | 이미지 Label 문서 조회 |
+| `PUT` | `/api/v1/labels/{image_id}` | 이미지 Label 문서 전체 수정 |
+| `DELETE` | `/api/v1/labels/{image_id}` | 이미지 Label 문서 삭제 |
+| `POST` | `/api/v1/labels/{image_id}/annotations` | annotation 추가 |
+| `PUT` | `/api/v1/labels/{image_id}/annotations/{annotation_id}` | annotation 수정 |
+| `DELETE` | `/api/v1/labels/{image_id}/annotations/{annotation_id}` | annotation 삭제 |
 
 실행 endpoint는 `payload`라는 JSON 문자열 form field와 0개 이상의 `files`
 field를 받습니다. `image_inputs[].file_index`는 `files`의 순서를 가리킵니다.
@@ -337,6 +356,31 @@ app = create_app(pipelines=[EDGE_THUMBNAIL_PIPELINE])
 등록하지 않은 PipelineSpec은 `/api/v1/pipelines/validate`로 먼저 검사하고
 `/api/v1/pipelines/execute`에서 바로 실행할 수도 있습니다.
 
+### Recipe / Label 저장 위치
+
+사용자 Recipe와 Label 데이터는 기본적으로 프로젝트 실행 경로의
+`.image_processing_data/` 아래에 JSON으로 저장됩니다. built-in 20개 Recipe는
+소스 코드에서 생성되며 읽기 전용이고, `/recipes/{name}/clone`으로 사용자 Recipe를
+만든 뒤 수정할 수 있습니다. 저장 경로는 `ApiSettings`에서 변경할 수 있습니다.
+
+```python
+from pathlib import Path
+
+from src.api import ApiSettings, create_app
+
+settings = ApiSettings(
+    recipe_store_dir=Path(r"D:/ImageStudioData/recipes"),
+    label_store_dir=Path(r"D:/ImageStudioData/labels"),
+)
+app = create_app(settings=settings)
+```
+
+Recipe와 Label 모두 `revision`을 사용합니다. 수정/삭제 시 `expected_revision`을
+전달하면 다른 화면이나 세션에서 먼저 저장한 변경사항을 덮어쓰는 것을 방지할 수
+있습니다. Label 좌표는 pixel 좌표이며 이미지 `width`/`height` 범위를 벗어나는
+bbox, polygon, point, polyline은 저장되지 않습니다. 자세한 요청/응답 예시는
+[`docs/recipe_and_label_api.md`](docs/recipe_and_label_api.md)를 참고하세요.
+
 ## 테스트 실행
 
 프로젝트 루트에서 다음을 실행합니다.
@@ -347,9 +391,9 @@ python -m pytest -q
 
 현재 테스트는 스키마, 개별/교차 파라미터, 입력/출력 계약, Registry,
 Pipeline 사전 검증, 순차·분기형 참조, 실패 중단, 중간 결과 관리, 실제
-OpenCV 통합 실행, HTTP 조회·실행, multipart 이미지 업로드, JSON/ZIP 출력과
-오류 상태 코드뿐 아니라 Feature2D, homography, K-Means, kNN/SVM 및 Unicode
-이미지 I/O도 확인합니다.
+OpenCV 통합 실행, HTTP 조회·실행, multipart 이미지 업로드, JSON/ZIP 출력, Recipe 영속화/복제/
+revision 충돌, Label/annotation CRUD·좌표 검증·영속화와 오류 상태 코드뿐 아니라
+Feature2D, homography, K-Means, kNN/SVM 및 Unicode 이미지 I/O도 확인합니다.
 
 ## 다음 단계
 

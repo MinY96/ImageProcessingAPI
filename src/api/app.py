@@ -8,12 +8,14 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from src.labeling import LabelService, LabelStore
 from src.pipeline import (
     PipelineCatalog,
     PipelineExecutor,
     create_default_pipelines,
 )
 from src.machine_learning import ModelData, ModelRegistry
+from src.recipe import RecipeService, RecipeStore
 from src.registry import OperationRegistry, create_default_registry
 from src.schemas import PipelineSpec
 
@@ -44,14 +46,28 @@ def create_app(
         if pipelines is None
         else pipelines
     )
+    readonly_recipe_names: set[str] = set()
     for pipeline in resolved_pipelines:
         catalog.register(pipeline)
+        readonly_recipe_names.add(pipeline.name)
+
+    recipe_service = RecipeService(
+        executor=executor,
+        catalog=catalog,
+        store=RecipeStore(resolved_settings.recipe_store_dir),
+        readonly_names=readonly_recipe_names,
+    )
+    label_service = LabelService(
+        LabelStore(resolved_settings.label_store_dir)
+    )
 
     services = ApiServices(
         registry=resolved_registry,
         model_registry=resolved_model_registry,
         pipeline_executor=executor,
         pipeline_catalog=catalog,
+        recipe_service=recipe_service,
+        label_service=label_service,
         settings=resolved_settings,
     )
 
@@ -63,7 +79,7 @@ def create_app(
 
     app = FastAPI(
         title="Image Processing API",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field
 
 from src.schemas.base import BaseSchema
@@ -5,6 +7,9 @@ from src.schemas.base import BaseSchema
 
 class ApiSettings(BaseSchema):
     api_prefix: str = "/api/v1"
+
+    recipe_store_dir: Path = Path(".image_processing_data/recipes")
+    label_store_dir: Path = Path(".image_processing_data/labels")
 
     max_upload_files: int = Field(default=8, ge=1, le=64)
     max_upload_bytes_per_file: int = Field(

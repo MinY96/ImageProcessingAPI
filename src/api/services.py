@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
+from src.labeling import LabelService
 from src.machine_learning import ModelRegistry
 from src.pipeline import PipelineCatalog, PipelineExecutor
+from src.recipe import RecipeService
 from src.registry import OperationRegistry
 
 from .config import ApiSettings
@@ -13,4 +15,6 @@ class ApiServices:
     model_registry: ModelRegistry
     pipeline_executor: PipelineExecutor
     pipeline_catalog: PipelineCatalog
+    recipe_service: RecipeService
+    label_service: LabelService
     settings: ApiSettings
