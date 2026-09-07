@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from src.analysis import ImageAnalyzer
 from src.labeling import LabelService, LabelStore
 from src.pipeline import (
     PipelineCatalog,
@@ -63,6 +64,7 @@ def create_app(
 
     services = ApiServices(
         registry=resolved_registry,
+        image_analyzer=ImageAnalyzer(),
         model_registry=resolved_model_registry,
         pipeline_executor=executor,
         pipeline_catalog=catalog,
@@ -79,7 +81,7 @@ def create_app(
 
     app = FastAPI(
         title="Image Processing API",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
 

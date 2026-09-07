@@ -131,6 +131,40 @@ def decode_request_inputs(
     return result
 
 
+
+def decode_upload_image(
+    *,
+    upload: UploadFile,
+    settings: ApiSettings,
+    color_space: ColorSpace | None = None,
+    name: str | None = None,
+) -> ImageData:
+    """Decode one uploaded image for standalone image-level APIs."""
+    array, inferred_color_space, filename = _decode_upload(
+        upload=upload,
+        settings=settings,
+    )
+    if array.nbytes > settings.max_total_decoded_bytes:
+        raise ApiRequestError(
+            code="decoded_input_limit_exceeded",
+            message="decoded image input exceeds the memory limit",
+            status_code=413,
+            details={
+                "decoded_bytes": int(array.nbytes),
+                "maximum": settings.max_total_decoded_bytes,
+            },
+        )
+    resolved_color_space = _resolve_color_space(
+        requested=color_space,
+        inferred=inferred_color_space,
+        array=array,
+    )
+    return ImageData(
+        data=array,
+        color_space=resolved_color_space,
+        name=name or filename,
+    )
+
 def _decode_upload(
     *,
     upload: UploadFile,

@@ -21,6 +21,7 @@ from src.machine_learning import ModelNotFoundError, ModelSpec
 from src.registry import OperationNotFoundError
 from src.schemas import OperationSpec, PipelineSpec
 
+from .analysis_routes import create_analysis_router
 from .errors import ApiRequestError
 from .input_codec import decode_request_inputs, parse_form_payload
 from .label_routes import create_label_router
@@ -152,6 +153,8 @@ def create_router(prefix: str) -> APIRouter:
             result=result,
             response_format=response_format,
             settings=services.settings,
+            analyzer=services.image_analyzer,
+            analysis_options=parsed.analysis,
         )
 
     @router.get(
@@ -224,6 +227,9 @@ def create_router(prefix: str) -> APIRouter:
             result=result,
             response_format=response_format,
             settings=services.settings,
+            analyzer=services.image_analyzer,
+            analysis_options=parsed.analysis,
+            analyze_intermediates=parsed.analyze_intermediates,
         )
 
     @router.get(
@@ -286,8 +292,12 @@ def create_router(prefix: str) -> APIRouter:
             result=result,
             response_format=response_format,
             settings=services.settings,
+            analyzer=services.image_analyzer,
+            analysis_options=parsed.analysis,
+            analyze_intermediates=parsed.analyze_intermediates,
         )
 
+    router.include_router(create_analysis_router("", get_services))
     router.include_router(create_recipe_router("", get_services))
     router.include_router(create_label_router("", get_services))
     return router

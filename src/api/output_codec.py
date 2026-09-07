@@ -13,6 +13,7 @@ import numpy as np
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from src.analysis import AnalysisOptions, ImageAnalyzer
 from src.schemas import (
     ColorSpace,
     ExecutionResult,
@@ -38,6 +39,8 @@ def render_operation_result(
     result: ExecutionResult,
     response_format: ResponseFormat,
     settings: ApiSettings,
+    analyzer: ImageAnalyzer | None = None,
+    analysis_options: AnalysisOptions | None = None,
 ):
     payload: dict[str, Any] = {
         "operation": result.operation,
@@ -64,6 +67,8 @@ def render_operation_result(
         response_format=response_format,
         settings=settings,
         artifacts=artifacts,
+        analyzer=analyzer,
+        analysis_options=analysis_options,
     )
     return _render_success_payload(
         payload=payload,
@@ -79,6 +84,9 @@ def render_pipeline_result(
     result: PipelineExecutionResult,
     response_format: ResponseFormat,
     settings: ApiSettings,
+    analyzer: ImageAnalyzer | None = None,
+    analysis_options: AnalysisOptions | None = None,
+    analyze_intermediates: bool = False,
 ):
     payload: dict[str, Any] = {
         "pipeline": result.pipeline,
@@ -110,6 +118,8 @@ def render_pipeline_result(
         response_format=response_format,
         settings=settings,
         artifacts=artifacts,
+        analyzer=analyzer,
+        analysis_options=analysis_options,
     )
     payload["intermediates"] = {
         step_id: _encode_output(
@@ -118,6 +128,8 @@ def render_pipeline_result(
             response_format=response_format,
             settings=settings,
             artifacts=artifacts,
+            analyzer=(analyzer if analyze_intermediates else None),
+            analysis_options=(analysis_options if analyze_intermediates else None),
         )
         for step_id, output in result.intermediates.items()
     }
@@ -138,6 +150,8 @@ def _encode_output(
     response_format: ResponseFormat,
     settings: ApiSettings,
     artifacts: list[EncodedArtifact],
+    analyzer: ImageAnalyzer | None = None,
+    analysis_options: AnalysisOptions | None = None,
 ) -> dict[str, Any]:
     images = {}
 
@@ -161,6 +175,12 @@ def _encode_output(
             )
         else:
             metadata["file"] = artifact.path
+
+        if analyzer is not None and analysis_options is not None:
+            metadata["analysis"] = analyzer.analyze(
+                image,
+                options=analysis_options,
+            ).model_dump(mode="json")
 
         images[name] = metadata
 

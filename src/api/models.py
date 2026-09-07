@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
+from src.analysis import AnalysisOptions
 from src.schemas import ColorSpace, PipelineSpec
 from src.schemas.base import BaseSchema
 
@@ -65,10 +66,13 @@ class InputPayloadBase(BaseSchema):
 
 class OperationRunPayload(InputPayloadBase):
     params: dict[str, Any] = Field(default_factory=dict)
+    analysis: AnalysisOptions | None = None
 
 
 class PipelineRunPayload(InputPayloadBase):
     retain_intermediates: bool = False
+    analysis: AnalysisOptions | None = None
+    analyze_intermediates: bool = False
 
 
 class AdHocPipelineRunPayload(PipelineRunPayload):

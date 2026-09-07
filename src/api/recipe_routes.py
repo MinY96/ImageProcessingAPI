@@ -186,6 +186,9 @@ def create_recipe_router(prefix: str, get_services) -> APIRouter:
             result=result,
             response_format=response_format,
             settings=services.settings,
+            analyzer=services.image_analyzer,
+            analysis_options=parsed.analysis,
+            analyze_intermediates=parsed.analyze_intermediates,
         )
 
     return router

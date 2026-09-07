@@ -41,7 +41,7 @@ OpenCV 기반 이미지 처리 기능을 공통 스키마, 검증기, Registry �
 - 원본 `OperationSpec` 변경의 영향을 받지 않도록 defensive copy 사용
 - 크기 증가 operation의 최대 픽셀 수를 실행 전에 검사하여 과도한 메모리 할당 차단
 
-OpenCV 4.13의 Image Processing, GUI, Feature2D, Machine Learning 튜토리얼을
+OpenCV 4.14 계열의 Image Processing, GUI, Feature2D, Machine Learning 기능을
 기준 기능에 사진 편집·합성·OpenCV Photo 연산을 더해 기본 Registry에
 64개 operation을 등록했습니다.
 
@@ -125,6 +125,8 @@ Registry/Pipeline에 연결됩니다.
 - built-in/user Recipe 조회·생성·복제·수정·삭제·실행 및 JSON 영속화
 - 이미지별 Label 문서와 bbox/polygon/point/polyline annotation CRUD
 - Recipe/Label revision 기반 충돌 감지(낙관적 잠금)
+- 원본/전처리 결과 공통 Image Analysis API: 기본 메타데이터, Gray/RGB/HSV histogram, 통계 특징, X/Y projection 및 미분 profile
+- Operation/Pipeline/Recipe 실행 결과에 선택적으로 분석정보를 함께 반환
 
 ## 실행 흐름
 
@@ -297,6 +299,7 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `POST` | `/api/v1/operations/{name}/execute` | operation 실행 |
 | `GET` | `/api/v1/models` | 등록 모델 목록 조회 |
 | `GET` | `/api/v1/models/{model_id}/{version}` | 등록 모델 상세 조회 |
+| `POST` | `/api/v1/analysis/image` | 업로드 이미지 기본/통계/히스토그램/프로파일 분석 |
 | `GET` | `/api/v1/pipelines` | 등록된 pipeline 목록 조회 |
 | `GET` | `/api/v1/pipelines/{name}` | pipeline 상세 조회 |
 | `POST` | `/api/v1/pipelines/validate` | PipelineSpec 사전 검증 |
@@ -323,6 +326,12 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 field를 받습니다. `image_inputs[].file_index`는 `files`의 순서를 가리킵니다.
 서버 시작 시 `create_app(models=[...])`로 등록한 모델은 `model_inputs`의
 `model_id`와 `version`으로 실행 입력에 연결합니다.
+
+이미지 자체의 분석만 필요하면 `/api/v1/analysis/image`를 사용합니다. 실행 결과까지
+분석하려면 Operation/Pipeline/Recipe payload에 `analysis` 옵션을 포함합니다. Pipeline의
+중간 결과는 `analyze_intermediates=true`일 때만 분석하여 불필요한 CPU/메모리 사용을
+줄입니다. 자세한 필드와 프론트엔드 권장 표시 방법은
+[`docs/image_analysis_api.md`](docs/image_analysis_api.md)를 참고하세요.
 
 예를 들어 Gaussian Blur를 실행하려면 다음과 같이 요청합니다.
 
