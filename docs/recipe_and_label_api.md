@@ -4,13 +4,20 @@
 
 ## 1. Recipe 모델
 
-Recipe는 실행 정의를 새로 만들지 않고 기존 `PipelineSpec`을 그대로 포함합니다.
-따라서 Operation Registry와 Pipeline Executor의 검증/실행 로직을 중복 구현하지
-않습니다.
+Recipe API는 이제 두 실행 정의를 하나의 모델로 관리합니다.
+
+- `kind=linear`: 기존 `PipelineSpec`
+- `kind=graph`: DAG 기반 `GraphRecipeSpec`
+
+기존 클라이언트가 `pipeline`만 전송하면 `kind=linear`로 자동 추론하므로 이전 API와
+호환됩니다. Graph Recipe는 `graph` 필드를 사용합니다.
+
+Linear Recipe 예:
 
 ```json
 {
   "name": "sem_edge_custom",
+  "kind": "linear",
   "pipeline": {
     "name": "sem_edge_custom",
     "display_name": "SEM Edge Custom",
@@ -19,19 +26,41 @@ Recipe는 실행 정의를 새로 만들지 않고 기존 `PipelineSpec`을 그�
     "steps": [],
     "outputs": {}
   },
+  "graph": null,
   "source": "user",
   "readonly": false,
   "tags": ["sem"],
-  "revision": 1,
-  "created_at": "2026-09-06T14:00:00Z",
-  "updated_at": "2026-09-06T14:00:00Z"
+  "revision": 1
 }
 ```
 
-기본 20개 Recipe는 `source=builtin`, `readonly=true`입니다. 기본 Recipe를 수정하고
-싶으면 먼저 clone하여 사용자 Recipe를 생성합니다.
+Graph Recipe 예:
+
+```json
+{
+  "name": "sem_rule_custom",
+  "kind": "graph",
+  "pipeline": null,
+  "graph": {
+    "name": "sem_rule_custom",
+    "display_name": "SEM Rule Custom",
+    "version": "1.0.0",
+    "inputs": [{"name": "image", "kind": "image"}],
+    "nodes": [],
+    "outputs": {}
+  },
+  "source": "user",
+  "readonly": false,
+  "revision": 1
+}
+```
+
+기본 Recipe는 **20개 Linear + 5개 Graph**이며 모두 `source=builtin`,
+`readonly=true`입니다. Graph 구조/Feature/ROI/SubRecipe에 대한 상세 설명은
+[`graph_workflow_api.md`](graph_workflow_api.md)를 참고하세요.
 
 ### 기본 Recipe 복제
+
 
 ```http
 POST /api/v1/recipes/sem_profile_edges/clone
@@ -73,9 +102,9 @@ POST /api/v1/recipes
 }
 ```
 
-저장 전에 `PipelineExecutor.compile()` 검증을 통과해야 합니다. 저장된 사용자
-Recipe는 Pipeline Catalog에도 등록되므로 Recipe API뿐 아니라 기존 pipeline
-실행 계층과 동일한 compiled pipeline을 재사용합니다.
+Linear Recipe는 저장 전에 `PipelineExecutor.compile()`, Graph Recipe는
+`WorkflowExecutor.compile()` 검증을 통과해야 합니다. Linear는 Pipeline Catalog, Graph는
+Workflow Catalog에 등록되어 반복 실행 시 compiled 정의를 재사용합니다.
 
 ### Recipe 수정 충돌 방지
 
@@ -85,6 +114,7 @@ PUT /api/v1/recipes/my_recipe
 
 ```json
 {
+  "kind": "linear",
   "pipeline": { "...": "전체 PipelineSpec" },
   "tags": ["custom", "edited"],
   "expected_revision": 3
@@ -95,7 +125,8 @@ PUT /api/v1/recipes/my_recipe
 
 ### Recipe 실행
 
-기존 Pipeline 실행 API와 같은 multipart 계약을 사용합니다.
+Linear/Graph 모두 기존 Pipeline 실행 API와 같은 multipart 계약을 사용합니다. 서버는
+Recipe의 `kind`를 보고 적절한 Executor를 자동 선택합니다.
 
 ```http
 POST /api/v1/recipes/my_recipe/execute

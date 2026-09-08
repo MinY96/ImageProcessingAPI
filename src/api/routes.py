@@ -25,6 +25,7 @@ from .analysis_routes import create_analysis_router
 from .errors import ApiRequestError
 from .input_codec import decode_request_inputs, parse_form_payload
 from .label_routes import create_label_router
+from .evaluation_routes import create_evaluation_router
 from .models import (
     AdHocPipelineRunPayload,
     OperationRunPayload,
@@ -33,6 +34,7 @@ from .models import (
     ResponseFormat,
 )
 from .recipe_routes import create_recipe_router
+from .workflow_routes import create_workflow_router
 from .output_codec import (
     render_operation_result,
     render_pipeline_result,
@@ -300,4 +302,6 @@ def create_router(prefix: str) -> APIRouter:
     router.include_router(create_analysis_router("", get_services))
     router.include_router(create_recipe_router("", get_services))
     router.include_router(create_label_router("", get_services))
+    router.include_router(create_workflow_router(prefix="", get_services=get_services))
+    router.include_router(create_evaluation_router(prefix="", get_services=get_services))
     return router

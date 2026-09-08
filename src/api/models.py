@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 
 from src.analysis import AnalysisOptions
 from src.schemas import ColorSpace, PipelineSpec
+from src.workflow import GraphRecipeSpec
 from src.schemas.base import BaseSchema
 
 
@@ -77,6 +78,10 @@ class PipelineRunPayload(InputPayloadBase):
 
 class AdHocPipelineRunPayload(PipelineRunPayload):
     pipeline: PipelineSpec
+
+
+class AdHocWorkflowRunPayload(PipelineRunPayload):
+    graph: GraphRecipeSpec
 
 
 class PipelineValidationResponse(BaseSchema):

@@ -9,6 +9,7 @@ from .errors import (
 from .schemas import (
     RecipeCloneRequest,
     RecipeCreateRequest,
+    RecipeKind,
     RecipeRecord,
     RecipeSource,
     RecipeSummary,
@@ -17,19 +18,4 @@ from .schemas import (
 from .service import RecipeService
 from .store import RecipeStore
 
-__all__ = [
-    "DuplicateRecipeError",
-    "ReadonlyRecipeError",
-    "RecipeCloneRequest",
-    "RecipeCreateRequest",
-    "RecipeError",
-    "RecipeNotFoundError",
-    "RecipeRecord",
-    "RecipeRevisionConflictError",
-    "RecipeService",
-    "RecipeSource",
-    "RecipeStore",
-    "RecipeStoreError",
-    "RecipeSummary",
-    "RecipeUpdateRequest",
-]
+__all__ = [name for name in globals() if not name.startswith("_")]

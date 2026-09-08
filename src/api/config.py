@@ -10,6 +10,10 @@ class ApiSettings(BaseSchema):
 
     recipe_store_dir: Path = Path(".image_processing_data/recipes")
     label_store_dir: Path = Path(".image_processing_data/labels")
+    test_dataset_store_dir: Path = Path(".image_processing_data/test_datasets")
+    evaluation_store_dir: Path = Path(".image_processing_data/evaluations")
+
+    max_test_dataset_images: int = Field(default=100_000, ge=1, le=1_000_000)
 
     max_upload_files: int = Field(default=8, ge=1, le=64)
     max_upload_bytes_per_file: int = Field(

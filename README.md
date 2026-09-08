@@ -1,7 +1,8 @@
 # Image Processing API Project
 
 OpenCV 기반 이미지 처리 기능을 공통 스키마, 검증기, Registry 및 API로
-확장하기 위한 프로젝트입니다.
+확장하고, 전처리 → ROI/분기 → Feature 추출 → Scalar 연산 → Rule 판정까지
+구성할 수 있는 Rule-based Vision Workflow 프로젝트입니다.
 
 ## 현재 완료 범위
 
@@ -112,7 +113,60 @@ Registry/Pipeline에 연결됩니다.
 - 반복 실행용 `CompiledPipeline` 지원
 - Registry가 변경되면 기존 compiled pipeline을 자동 재컴파일
 
-### 6. FastAPI HTTP API
+### 6. Graph Workflow / Rule Engine
+
+기존 선형 Pipeline 위에 DAG 기반 `GraphRecipeSpec` 실행 계층을 추가했습니다. 하나의
+output을 여러 branch가 공유할 수 있고, ROI별 서로 다른 처리, feature 추출/연산,
+최종 threshold 판정, linear/graph SubRecipe 재사용을 지원합니다.
+
+- Typed Port: `image`, `mask`, `profile`, `scalar`, `roi`, `boolean`, `decision` 등
+- Node: Operation, Feature, Scalar Operator, ROI Crop/Compose, Decision, SubRecipe
+- Graph cycle 및 잘못된 port 연결을 실행 전에 검증
+- Feature Registry: pixel/profile/contour/image similarity/mask similarity
+- Scalar Operator Registry: 산술, ratio, abs diff, sum/mean/min/max, weighted sum/mean, normalize
+- 참조 횟수 기반 중간 결과 해제로 branch 수 증가 시 불필요한 이미지 복사/보존 최소화
+- Recipe API에서 `kind=linear|graph`를 동일하게 조회·저장·복제·수정·실행
+
+기본 Graph Recipe 5개를 함께 제공합니다.
+
+| Recipe | 구조 |
+|---|---|
+| `rule_branch_binary_score` | Binary 이후 3-way branch → 3 feature → weighted score → 판정 |
+| `rule_multi_roi_fusion` | 좌/중/우 ROI → 각기 다른 pipeline → feature fusion → 판정 |
+| `rule_multi_roi_recompose` | ROI별 서로 다른 전처리 → 원 좌표에 image recompose |
+| `rule_nested_sem_profile` | 기존 linear `sem_profile_edges`를 SubRecipe로 사용 |
+| `rule_nested_graph_score` | Graph Recipe 안에 다른 Graph Recipe를 SubRecipe로 사용 |
+
+상세 구조와 JSON/API 사용법은
+[`docs/graph_workflow_api.md`](docs/graph_workflow_api.md)를 참고하세요.
+
+전체 Python 실행 예시는 다음 명령으로 확인할 수 있습니다.
+
+```bash
+python -m examples.graph_workflow_usage
+```
+
+### 7. TestDataset / Evaluation Engine
+
+Decision까지 포함된 Recipe를 실제 OK/NG 이미지 폴더에 일괄 적용해 성능을 검증하는 계층을 추가했습니다.
+
+- 이미지 폴더 기반 TestDataset 생성 및 JSON 영속화
+- `OK/`, `NG/` 하위 폴더 Ground Truth 자동 인식
+- 개별/다중 Ground Truth 수정 및 revision 충돌 감지
+- 큰 Dataset용 이미지 목록 pagination/filter
+- Graph/Linear Recipe batch 실행
+- Decision output + Score output 추출
+- Graph/Pipeline intermediate의 scalar 값만 오판 분석용으로 저장
+- TP/TN/FP/FN, Accuracy, Precision, Recall, Specificity, F1
+- 평균/중앙값/P95/최대 처리시간과 OK/NG score 분포 통계
+- 손상 이미지/실행 실패를 `ERROR`로 분리하여 metric 왜곡 방지
+- Dataset revision + Recipe kind/version/revision snapshot 저장
+- False NG / Missed NG / ERROR 결과 filtering 및 pagination
+
+상세 API와 프론트엔드 연계 방식은
+[`docs/evaluation_api.md`](docs/evaluation_api.md)를 참고하세요.
+
+### 8. FastAPI HTTP API
 
 - Registry의 operation 목록·상세 조회 및 실행
 - Model Registry의 모델 목록·상세 조회와 ID/version 입력 binding
@@ -123,10 +177,13 @@ Registry/Pipeline에 연결됩니다.
 - 업로드 크기, 이미지 픽셀 수, 디코딩 메모리 및 응답 크기 제한
 - 일관된 오류 응답과 OpenAPI 문서 제공
 - built-in/user Recipe 조회·생성·복제·수정·삭제·실행 및 JSON 영속화
+- Recipe를 `kind=linear|graph`로 통합하고 동일 `/recipes/{name}/execute`에서 자동 실행
+- Graph Feature/Scalar Operator metadata 조회, Graph compile 검증 및 ad-hoc 실행 API
 - 이미지별 Label 문서와 bbox/polygon/point/polyline annotation CRUD
 - Recipe/Label revision 기반 충돌 감지(낙관적 잠금)
 - 원본/전처리 결과 공통 Image Analysis API: 기본 메타데이터, Gray/RGB/HSV histogram, 통계 특징, X/Y projection 및 미분 profile
 - Operation/Pipeline/Recipe 실행 결과에 선택적으로 분석정보를 함께 반환
+- TestDataset 폴더 import/OK·NG Ground Truth 관리 및 EvaluationRun 성능 평가 API
 
 ## 실행 흐름
 
@@ -305,6 +362,10 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `POST` | `/api/v1/pipelines/validate` | PipelineSpec 사전 검증 |
 | `POST` | `/api/v1/pipelines/execute` | ad-hoc pipeline 실행 |
 | `POST` | `/api/v1/pipelines/{name}/execute` | 등록된 pipeline 실행 |
+| `GET` | `/api/v1/workflow/features` | Feature Extractor 목록/스키마 조회 |
+| `GET` | `/api/v1/workflow/operators` | Scalar Operator 목록/스키마 조회 |
+| `POST` | `/api/v1/workflow/validate` | GraphRecipeSpec DAG 사전 검증 |
+| `POST` | `/api/v1/workflow/execute` | ad-hoc Graph Recipe 실행 |
 | `GET` | `/api/v1/recipes` | Recipe 목록/검색 (`builtin`, `user`) |
 | `POST` | `/api/v1/recipes` | 사용자 Recipe 생성 |
 | `GET` | `/api/v1/recipes/{name}` | Recipe 상세 조회 |
@@ -321,6 +382,15 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `POST` | `/api/v1/labels/{image_id}/annotations` | annotation 추가 |
 | `PUT` | `/api/v1/labels/{image_id}/annotations/{annotation_id}` | annotation 수정 |
 | `DELETE` | `/api/v1/labels/{image_id}/annotations/{annotation_id}` | annotation 삭제 |
+| `GET` | `/api/v1/test-datasets` | TestDataset 요약 목록 |
+| `POST` | `/api/v1/test-datasets` | TestDataset 생성 |
+| `POST` | `/api/v1/test-datasets/{id}/import-folder` | 폴더 이미지 가져오기 및 OK/NG 자동 라벨 |
+| `GET` | `/api/v1/test-datasets/{id}/images` | Dataset 이미지 목록/필터/pagination |
+| `PUT` | `/api/v1/test-datasets/{id}/ground-truth` | 다중 Ground Truth 변경 |
+| `GET` | `/api/v1/evaluations` | EvaluationRun 이력 조회 |
+| `POST` | `/api/v1/evaluations` | Dataset × Decision Recipe 일괄 평가 |
+| `GET` | `/api/v1/evaluations/{id}` | 평가 전체 결과 조회 |
+| `GET` | `/api/v1/evaluations/{id}/results` | FP/FN/ERROR 등 이미지별 결과 필터 |
 
 실행 endpoint는 `payload`라는 JSON 문자열 form field와 0개 이상의 `files`
 field를 받습니다. `image_inputs[].file_index`는 `files`의 순서를 가리킵니다.
@@ -353,7 +423,7 @@ curl -X POST \
   --output result.zip
 ```
 
-기본 `src.main:app`에는 20개 built-in recipe가 등록됩니다. 애플리케이션 생성 시
+기본 `src.main:app`에는 20개 linear built-in recipe와 5개 graph built-in recipe가 등록됩니다. 애플리케이션 생성 시
 목록을 전달하면 기본값 대신 원하는 pipeline만 등록할 수 있습니다.
 
 ```python
@@ -368,9 +438,10 @@ app = create_app(pipelines=[EDGE_THUMBNAIL_PIPELINE])
 ### Recipe / Label 저장 위치
 
 사용자 Recipe와 Label 데이터는 기본적으로 프로젝트 실행 경로의
-`.image_processing_data/` 아래에 JSON으로 저장됩니다. built-in 20개 Recipe는
-소스 코드에서 생성되며 읽기 전용이고, `/recipes/{name}/clone`으로 사용자 Recipe를
-만든 뒤 수정할 수 있습니다. 저장 경로는 `ApiSettings`에서 변경할 수 있습니다.
+`.image_processing_data/` 아래에 JSON으로 저장됩니다. built-in 20개 Linear Recipe와
+5개 Graph Recipe는 소스 코드에서 생성되며 읽기 전용이고, `/recipes/{name}/clone`으로
+`linear`/`graph` 종류를 유지한 사용자 Recipe를 만든 뒤 수정할 수 있습니다.
+저장 경로는 `ApiSettings`에서 변경할 수 있습니다.
 
 ```python
 from pathlib import Path
@@ -398,9 +469,10 @@ bbox, polygon, point, polyline은 저장되지 않습니다. 자세한 요청/�
 python -m pytest -q
 ```
 
-현재 테스트는 스키마, 개별/교차 파라미터, 입력/출력 계약, Registry,
-Pipeline 사전 검증, 순차·분기형 참조, 실패 중단, 중간 결과 관리, 실제
-OpenCV 통합 실행, HTTP 조회·실행, multipart 이미지 업로드, JSON/ZIP 출력, Recipe 영속화/복제/
+현재 168개 테스트는 스키마, 개별/교차 파라미터, 입력/출력 계약, Registry,
+Pipeline 사전 검증, 순차·분기형 참조, 실패 중단, 중간 결과 관리, Graph DAG cycle/typed-port 검증,
+Binary 다중 분기/ROI fusion/ROI recompose/SubRecipe 실행, 실제 OpenCV 통합 실행, HTTP 조회·실행,
+multipart 이미지 업로드, JSON/ZIP 출력, Recipe 영속화/복제/
 revision 충돌, Label/annotation CRUD·좌표 검증·영속화와 오류 상태 코드뿐 아니라
 Feature2D, homography, K-Means, kNN/SVM 및 Unicode 이미지 I/O도 확인합니다.
 

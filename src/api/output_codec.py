@@ -21,6 +21,7 @@ from src.schemas import (
     OperationOutput,
     PipelineExecutionResult,
 )
+from src.workflow import WorkflowExecutionResult
 
 from .config import ApiSettings
 from .errors import ApiRequestError
@@ -142,6 +143,47 @@ def render_pipeline_result(
         download_name=f"{result.pipeline}_result.zip",
     )
 
+
+
+def render_workflow_result(
+    *,
+    result: WorkflowExecutionResult,
+    response_format: ResponseFormat,
+    settings: ApiSettings,
+    analyzer: ImageAnalyzer | None = None,
+    analysis_options: AnalysisOptions | None = None,
+    analyze_intermediates: bool = False,
+):
+    payload: dict[str, Any] = {
+        "recipe": result.recipe,
+        "success": result.success,
+        "nodes": [item.model_dump(mode="json") for item in result.nodes],
+        "metadata": result.metadata.model_dump(mode="json"),
+        "error": (result.error.model_dump(mode="json") if result.error is not None else None),
+    }
+    if not result.success:
+        payload["output"] = {"images": {}, "data": {}}
+        payload["intermediates"] = {}
+        return JSONResponse(status_code=422 if result.error and "validation" in result.error.code else 400, content=payload)
+
+    artifacts: list[EncodedArtifact] = []
+    payload["output"] = _encode_output(
+        output=result.output, prefix="output", response_format=response_format, settings=settings,
+        artifacts=artifacts, analyzer=analyzer, analysis_options=analysis_options,
+    )
+    payload["intermediates"] = {
+        node_id: _encode_output(
+            output=output, prefix=f"intermediates/{node_id}", response_format=response_format,
+            settings=settings, artifacts=artifacts,
+            analyzer=(analyzer if analyze_intermediates else None),
+            analysis_options=(analysis_options if analyze_intermediates else None),
+        )
+        for node_id, output in result.intermediates.items()
+    }
+    return _render_success_payload(
+        payload=payload, artifacts=artifacts, response_format=response_format, settings=settings,
+        download_name=f"{result.recipe}_result.zip",
+    )
 
 def _encode_output(
     *,
