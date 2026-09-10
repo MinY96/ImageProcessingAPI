@@ -6,12 +6,15 @@ from src.evaluation import (
     AddImagesRequest,
     BatchGroundTruthRequest,
     DuplicateTestDatasetError,
+    EvaluationActiveError,
+    EvaluationJobAccepted,
     EvaluationPrediction,
     EvaluationRequest,
     EvaluationResultPage,
     EvaluationRun,
     EvaluationRunNotFoundError,
     EvaluationRunSummary,
+    EvaluationStatus,
     EvaluationStoreError,
     EvaluationValidationError,
     FolderImportRequest,
@@ -41,6 +44,8 @@ def _evaluation_error(exc: Exception) -> ApiRequestError:
         return ApiRequestError(code="test_dataset_already_exists", message=str(exc), status_code=409)
     if isinstance(exc, TestDatasetRevisionConflictError):
         return ApiRequestError(code="test_dataset_revision_conflict", message=str(exc), status_code=409)
+    if isinstance(exc, EvaluationActiveError):
+        return ApiRequestError(code="evaluation_active", message=str(exc), status_code=409)
     if isinstance(exc, EvaluationValidationError):
         return ApiRequestError(code="evaluation_validation_error", message=str(exc), status_code=422)
     if isinstance(exc, ValueError):
@@ -194,19 +199,38 @@ def create_evaluation_router(prefix: str, get_services) -> APIRouter:
         services: Annotated[ApiServices, Depends(get_services)],
         dataset_id: Annotated[str | None, Query()] = None,
         recipe_name: Annotated[str | None, Query()] = None,
+        evaluation_status: Annotated[EvaluationStatus | None, Query(alias="status")] = None,
     ):
         try:
-            return services.evaluation_service.list(dataset_id=dataset_id, recipe_name=recipe_name)
+            return services.evaluation_service.list(
+                dataset_id=dataset_id,
+                recipe_name=recipe_name,
+                status=evaluation_status,
+            )
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 
-    @evaluations.post("", response_model=EvaluationRun, status_code=status.HTTP_201_CREATED)
+    @evaluations.post(
+        "",
+        response_model=EvaluationJobAccepted,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
     def create_evaluation(
         request: EvaluationRequest,
         services: Annotated[ApiServices, Depends(get_services)],
     ):
         try:
             return services.evaluation_service.create(request)
+        except Exception as exc:
+            raise _evaluation_error(exc) from exc
+
+    @evaluations.post("/{evaluation_id}/cancel", response_model=EvaluationRun)
+    def cancel_evaluation(
+        evaluation_id: str,
+        services: Annotated[ApiServices, Depends(get_services)],
+    ):
+        try:
+            return services.evaluation_service.cancel(evaluation_id)
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 

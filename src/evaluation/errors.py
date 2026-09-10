@@ -32,3 +32,7 @@ class EvaluationStoreError(EvaluationError):
 
 class EvaluationValidationError(EvaluationError):
     pass
+
+
+class EvaluationActiveError(EvaluationError):
+    pass

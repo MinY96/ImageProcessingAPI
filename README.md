@@ -146,14 +146,23 @@ output을 여러 branch가 공유할 수 있고, ROI별 서로 다른 처리, fe
 python -m examples.graph_workflow_usage
 ```
 
-### 7. TestDataset / Evaluation Engine
+### 7. TestDataset / Evaluation Job Engine
 
-Decision까지 포함된 Recipe를 실제 OK/NG 이미지 폴더에 일괄 적용해 성능을 검증하는 계층을 추가했습니다.
+Decision까지 포함된 Recipe를 실제 OK/NG 이미지 폴더에 일괄 적용해 성능을 검증합니다.
+Evaluation은 v0.6.0부터 **로컬 Job Queue + 전용 Worker** 구조로 실행됩니다.
 
 - 이미지 폴더 기반 TestDataset 생성 및 JSON 영속화
 - `OK/`, `NG/` 하위 폴더 Ground Truth 자동 인식
 - 개별/다중 Ground Truth 수정 및 revision 충돌 감지
 - 큰 Dataset용 이미지 목록 pagination/filter
+- `POST /evaluations` 즉시 `202 Accepted` + `evaluation_id` 반환
+- `queued / running / completed / failed / cancel_requested / cancelled` 상태 관리
+- live progress(`processed / total / percent`) 조회
+- 기본 Worker 1개로 무거운 Evaluation과 Interactive API 실행 분리
+- 기본 50장 단위 결과 checkpoint 저장
+- queued Job 재시작 복구, 중단된 running Job 자동 failed 정리
+- 실행 직전 Dataset/Recipe revision 재검증으로 Queue 대기 중 변경 보호
+- 실행 중 안전한 cancel 요청 지원
 - Graph/Linear Recipe batch 실행
 - Decision output + Score output 추출
 - Graph/Pipeline intermediate의 scalar 값만 오판 분석용으로 저장
@@ -183,7 +192,7 @@ Decision까지 포함된 Recipe를 실제 OK/NG 이미지 폴더에 일괄 적�
 - Recipe/Label revision 기반 충돌 감지(낙관적 잠금)
 - 원본/전처리 결과 공통 Image Analysis API: 기본 메타데이터, Gray/RGB/HSV histogram, 통계 특징, X/Y projection 및 미분 profile
 - Operation/Pipeline/Recipe 실행 결과에 선택적으로 분석정보를 함께 반환
-- TestDataset 폴더 import/OK·NG Ground Truth 관리 및 EvaluationRun 성능 평가 API
+- TestDataset 폴더 import/OK·NG Ground Truth 관리 및 비동기 Evaluation Job Queue API
 
 ## 실행 흐름
 
@@ -331,6 +340,8 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 서버가 실행되면 Swagger UI는 `http://localhost:8000/docs`, OpenAPI JSON은
 `http://localhost:8000/openapi.json`에서 확인할 수 있습니다.
 
+현재 FastAPI application version은 `0.6.0`이며 HTTP endpoint는 총 49개입니다.
+
 ### Jupyter Notebook으로 전처리 결과 확인
 
 [`notebooks/api_preprocessing_demo.ipynb`](notebooks/api_preprocessing_demo.ipynb)는
@@ -384,12 +395,20 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `DELETE` | `/api/v1/labels/{image_id}/annotations/{annotation_id}` | annotation 삭제 |
 | `GET` | `/api/v1/test-datasets` | TestDataset 요약 목록 |
 | `POST` | `/api/v1/test-datasets` | TestDataset 생성 |
+| `GET` | `/api/v1/test-datasets/{id}` | TestDataset 요약 조회 |
+| `PUT` | `/api/v1/test-datasets/{id}` | TestDataset 정보 수정 |
+| `DELETE` | `/api/v1/test-datasets/{id}` | TestDataset 삭제 |
 | `POST` | `/api/v1/test-datasets/{id}/import-folder` | 폴더 이미지 가져오기 및 OK/NG 자동 라벨 |
 | `GET` | `/api/v1/test-datasets/{id}/images` | Dataset 이미지 목록/필터/pagination |
+| `POST` | `/api/v1/test-datasets/{id}/images` | Dataset에 이미지 경로 추가 |
+| `PUT` | `/api/v1/test-datasets/{id}/images/{image_id}` | 이미지 Ground Truth/metadata 수정 |
+| `DELETE` | `/api/v1/test-datasets/{id}/images/{image_id}` | Dataset 이미지 제거 |
 | `PUT` | `/api/v1/test-datasets/{id}/ground-truth` | 다중 Ground Truth 변경 |
-| `GET` | `/api/v1/evaluations` | EvaluationRun 이력 조회 |
-| `POST` | `/api/v1/evaluations` | Dataset × Decision Recipe 일괄 평가 |
-| `GET` | `/api/v1/evaluations/{id}` | 평가 전체 결과 조회 |
+| `GET` | `/api/v1/evaluations` | Evaluation Job/이력 조회 및 상태 필터 |
+| `POST` | `/api/v1/evaluations` | Evaluation Job 등록 (`202 Accepted`) |
+| `POST` | `/api/v1/evaluations/{id}/cancel` | queued/running 평가 취소 요청 |
+| `GET` | `/api/v1/evaluations/{id}` | 평가 상태/진행률/결과 조회 |
+| `DELETE` | `/api/v1/evaluations/{id}` | terminal 평가 이력 삭제 |
 | `GET` | `/api/v1/evaluations/{id}/results` | FP/FN/ERROR 등 이미지별 결과 필터 |
 
 실행 endpoint는 `payload`라는 JSON 문자열 form field와 0개 이상의 `files`
