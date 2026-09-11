@@ -1,10 +1,12 @@
 # ============================================================
-# Image Processing API Project
-# Python / FastAPI + React / TypeScript + VS Code + Windows
+# Image Processing Studio
+# Backend: Python / FastAPI
+# Frontend: React / TypeScript / Vite
+# Environment: VS Code / Windows
 # ============================================================
 
 # ------------------------------------------------------------
-# Python bytecode / cache
+# Backend - Python bytecode / cache
 # ------------------------------------------------------------
 __pycache__/
 *.py[cod]
@@ -13,7 +15,7 @@ __pycache__/
 *.so
 
 # ------------------------------------------------------------
-# Python virtual environments
+# Backend - Python virtual environments
 # ------------------------------------------------------------
 .venv/
 venv/
@@ -21,18 +23,18 @@ env/
 ENV/
 
 # ------------------------------------------------------------
-# Python packaging / build artifacts
+# Backend - Python packaging / build artifacts
 # ------------------------------------------------------------
-build/
-dist/
 *.egg-info/
 .eggs/
 wheels/
 *.egg
+build/
+dist/
 MANIFEST
 
 # ------------------------------------------------------------
-# Test / coverage / type-check / lint caches
+# Backend - Test / coverage / type-check / lint caches
 # ------------------------------------------------------------
 .pytest_cache/
 .coverage
@@ -49,9 +51,33 @@ coverage.xml
 .ruff_cache/
 
 # ------------------------------------------------------------
-# Jupyter Notebook
+# Backend - Jupyter
 # ------------------------------------------------------------
 .ipynb_checkpoints/
+
+# ------------------------------------------------------------
+# Frontend - Node.js
+# ------------------------------------------------------------
+node_modules/
+.pnpm-store/
+.yarn/
+
+# ------------------------------------------------------------
+# Frontend - Vite / TypeScript
+# ------------------------------------------------------------
+.vite/
+*.tsbuildinfo
+
+# Production build
+frontend/dist/
+
+# ------------------------------------------------------------
+# Node / npm logs
+# ------------------------------------------------------------
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # ------------------------------------------------------------
 # Environment / local secrets
@@ -59,52 +85,38 @@ coverage.xml
 .env
 .env.*
 !.env.example
+
+# Explicit frontend example env
+!frontend/.env.example
+
 *.pem
 *.key
 
 # ------------------------------------------------------------
-# Runtime / temporary output
+# Backend runtime / temporary output
 # ------------------------------------------------------------
-logs/
-*.log
-.tmp/
-tmp/
-temp/
+backend/logs/
+backend/.tmp/
+backend/tmp/
+backend/temp/
 
-uploads/
-output/
-outputs/
-result/
-results/
+backend/uploads/
+backend/output/
+backend/outputs/
+backend/result/
+backend/results/
 
 # ------------------------------------------------------------
-# React / TypeScript / Node.js
-# (frontend will be added later)
+# Image Processing Studio local persistence
 # ------------------------------------------------------------
-node_modules/
-.pnpm-store/
-.yarn/
-
-# Vite / frontend build cache
-.vite/
-*.tsbuildinfo
-
-# Node / npm logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Local frontend environment files
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
+.image_processing_data
 
 # ------------------------------------------------------------
 # VS Code / IDE local settings
 # ------------------------------------------------------------
 .vscode/
 .idea/
+
 *.suo
 *.user
 *.userosscache
@@ -117,6 +129,7 @@ Thumbs.db
 Thumbs.db:encryptable
 Desktop.ini
 $RECYCLE.BIN/
+
 .DS_Store
 .AppleDouble
 .LSOverride
@@ -134,10 +147,7 @@ $RECYCLE.BIN/
 # Optional large local image/dataset directories
 # Uncomment if these directories are used only for local data.
 # ------------------------------------------------------------
-# data/
-# datasets/
-# images/
-# models/
-
-# Local Recipe / Label persistence
-.image_processing_data/
+# backend/data/
+# backend/datasets/
+# backend/images/
+# backend/models/
