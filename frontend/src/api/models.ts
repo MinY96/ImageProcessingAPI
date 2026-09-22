@@ -1,5 +1,6 @@
 import { api } from './client';
+import type { ModelSpec } from './types';
 export const modelsApi = {
-  list: () => api<unknown[]>('/models'),
-  get: (modelId: string, version: string) => api<unknown>(`/models/${encodeURIComponent(modelId)}/${encodeURIComponent(version)}`),
+  list: () => api<ModelSpec[]>('/models'),
+  get: (modelId: string, version: string) => api<ModelSpec>(`/models/${encodeURIComponent(modelId)}/${encodeURIComponent(version)}`),
 };

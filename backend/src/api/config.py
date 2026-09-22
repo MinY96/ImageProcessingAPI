@@ -12,6 +12,8 @@ class ApiSettings(BaseSchema):
     label_store_dir: Path = Path(".image_processing_data/labels")
     test_dataset_store_dir: Path = Path(".image_processing_data/test_datasets")
     evaluation_store_dir: Path = Path(".image_processing_data/evaluations")
+    evaluation_checkpoint_interval: int = Field(default=50, ge=1, le=10_000)
+    evaluation_worker_count: int = Field(default=1, ge=1, le=4)
     synthetic_asset_store_dir: Path = Path(".image_processing_data/synthetic/assets")
     synthetic_diffusion_cache_dir: Path = Path(".image_processing_data/models/diffusion")
     synthetic_diffusion_local_files_only: bool = True

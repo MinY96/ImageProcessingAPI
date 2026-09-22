@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 import cv2
 import numpy as np
@@ -68,6 +69,19 @@ def _client(tmp_path: Path):
     )
     return TestClient(create_app(settings=settings))
 
+
+
+
+def _wait_for_evaluation(client: TestClient, evaluation_id: str, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/v1/evaluations/{evaluation_id}")
+        assert response.status_code == 200, response.text
+        run = response.json()
+        if run["status"] in {"completed", "failed", "cancelled"}:
+            return run
+        time.sleep(0.01)
+    raise AssertionError(f"evaluation did not reach terminal state: {evaluation_id}")
 
 def _create_recipe(client: TestClient) -> None:
     graph = _evaluation_graph()
@@ -180,8 +194,14 @@ def test_evaluation_confusion_metrics_result_filtering_and_persistence(tmp_path:
                 "capture_node_values": True,
             },
         )
-        assert executed.status_code == 201, executed.text
-        run = executed.json()
+        assert executed.status_code == 202, executed.text
+        accepted = executed.json()
+        assert accepted["status"] == "queued"
+        assert accepted["progress"] == {"total": 4, "processed": 0, "percent": 0.0}
+        run = _wait_for_evaluation(client, accepted["evaluation_id"])
+        assert run["status"] == "completed", run
+        assert run["progress"]["processed"] == 4
+        assert run["progress"]["percent"] == 100.0
         matrix = run["summary"]["confusion_matrix"]
         assert matrix == {"tp": 1, "tn": 1, "fp": 1, "fn": 1}
         metrics = run["summary"]["metrics"]
@@ -215,6 +235,15 @@ def test_evaluation_confusion_metrics_result_filtering_and_persistence(tmp_path:
         listed = client.get("/api/v1/evaluations").json()
         assert len(listed) == 1
         assert listed[0]["evaluation_id"] == eval_id
+        assert listed[0]["status"] == "completed"
+        completed_only = client.get(
+            "/api/v1/evaluations", params={"status": "completed"}
+        ).json()
+        assert len(completed_only) == 1
+        running_only = client.get(
+            "/api/v1/evaluations", params={"status": "running"}
+        ).json()
+        assert running_only == []
         fetched = client.get(f"/api/v1/evaluations/{eval_id}")
         assert fetched.status_code == 200
         assert fetched.json()["summary"]["confusion_matrix"] == matrix
@@ -244,8 +273,9 @@ def test_evaluation_marks_missing_file_as_error(tmp_path: Path):
             "/api/v1/evaluations",
             json={"dataset_id": "errors", "recipe_name": "evaluation_mean_rule"},
         )
-        assert executed.status_code == 201, executed.text
-        body = executed.json()
+        assert executed.status_code == 202, executed.text
+        body = _wait_for_evaluation(client, executed.json()["evaluation_id"])
+        assert body["status"] == "completed", body
         assert body["summary"]["error_images"] == 1
         assert body["summary"]["evaluated_images"] == 1
         assert body["summary"]["execution_success_rate"] == 0.5

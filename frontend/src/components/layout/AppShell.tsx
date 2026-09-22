@@ -1,8 +1,11 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { systemApi } from '../../api';
 
 const navItems = [
   { to: '/recipe-studio', label: 'Recipe Studio', icon: '◆' },
   { to: '/image-lab', label: '이미지 실험실', icon: '▣' },
+  { to: '/synthetic-ng', label: 'Synthetic NG', icon: '✦' },
   { to: '/datasets', label: '데이터셋', icon: '▤' },
   { to: '/evaluations', label: '평가', icon: '▥' },
 ];
@@ -10,6 +13,7 @@ const navItems = [
 const pageNames: Record<string, string> = {
   '/recipe-studio': 'Recipe Studio',
   '/image-lab': '이미지 실험실',
+  '/synthetic-ng': 'Synthetic NG Generator',
   '/datasets': '데이터셋',
   '/evaluations': '평가',
   '/settings': '설정',
@@ -17,7 +21,25 @@ const pageNames: Record<string, string> = {
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const base = Object.keys(pageNames).find((p) => location.pathname.startsWith(p)) ?? '/recipe-studio';
+  const [connected, setConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      try {
+        const result = await systemApi.health();
+        if (active) setConnected(result.status === 'ok');
+      } catch {
+        if (active) setConnected(false);
+      }
+    };
+    void check();
+    const timer = window.setInterval(check, 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand">
@@ -37,9 +59,9 @@ export function AppShell() {
       <header className="app-header">
         <div className="breadcrumb"><strong>{pageNames[base]}</strong><span>›</span><span>Workspace</span></div>
         <div className="header-actions">
-          <div className="connection"><span className="connection-dot"/>Connected <span style={{color:'var(--text-3)'}}>v0.6.0</span></div>
-          <button className="icon-btn" title="Help">?</button>
-          <button className="icon-btn" title="Settings">⚙</button>
+          <div className={`connection ${connected === false ? 'disconnected' : ''}`}><span className="connection-dot"/>{connected == null ? 'Checking' : connected ? 'Connected' : 'Disconnected'} <span style={{color:'var(--text-3)'}}>API v0.6.x</span></div>
+          <button className="icon-btn" title="Swagger UI" onClick={() => window.open('/docs', '_blank')}>?</button>
+          <button className="icon-btn" title="Settings" onClick={() => navigate('/settings')}>⚙</button>
         </div>
       </header>
       <Outlet />

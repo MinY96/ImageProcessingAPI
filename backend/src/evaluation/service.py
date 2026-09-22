@@ -1,65 +1,65 @@
 from __future__ import annotations
 
-from .dataset_service import TestDatasetService
-from .engine import EvaluationEngine
-from .errors import EvaluationRunNotFoundError
+from .jobs import EvaluationJobManager
 from .schemas import (
+    EvaluationJobAccepted,
     EvaluationPrediction,
     EvaluationRequest,
     EvaluationResultPage,
     EvaluationRun,
     EvaluationRunSummary,
+    EvaluationStatus,
     GroundTruthLabel,
 )
-from .store import EvaluationRunStore
 
 
 class EvaluationService:
-    def __init__(
-        self,
-        *,
-        dataset_service: TestDatasetService,
-        engine: EvaluationEngine,
-        store: EvaluationRunStore,
-    ) -> None:
-        self._dataset_service = dataset_service
-        self._engine = engine
-        self._store = store
+    def __init__(self, job_manager: EvaluationJobManager) -> None:
+        self._jobs = job_manager
 
     @staticmethod
     def _summary(run: EvaluationRun) -> EvaluationRunSummary:
         return EvaluationRunSummary(
             evaluation_id=run.evaluation_id,
+            status=run.status,
+            progress=run.progress,
             dataset=run.dataset,
             recipe=run.recipe,
             summary=run.summary,
+            failure=run.failure,
             created_at=run.created_at,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
         )
 
-    def list(self, *, dataset_id: str | None = None, recipe_name: str | None = None) -> list[EvaluationRunSummary]:
-        runs = self._store.load_all()
+    def list(
+        self,
+        *,
+        dataset_id: str | None = None,
+        recipe_name: str | None = None,
+        status: EvaluationStatus | None = None,
+    ) -> list[EvaluationRunSummary]:
+        runs = self._jobs.load_all()
         if dataset_id is not None:
             runs = [item for item in runs if item.dataset.dataset_id == dataset_id]
         if recipe_name is not None:
             runs = [item for item in runs if item.recipe.name == recipe_name]
+        if status is not None:
+            runs = [item for item in runs if item.status == status]
         runs.sort(key=lambda item: (item.created_at, item.evaluation_id), reverse=True)
         return [self._summary(item) for item in runs]
 
-    def create(self, request: EvaluationRequest) -> EvaluationRun:
-        dataset = self._dataset_service.get(request.dataset_id)
-        run = self._engine.run(dataset, request)
-        self._store.save(run)
-        return run.model_copy(deep=True)
+    def create(self, request: EvaluationRequest) -> EvaluationJobAccepted:
+        return self._jobs.submit(request)
 
     def get(self, evaluation_id: str) -> EvaluationRun:
-        run = self._store.load(evaluation_id)
-        if run is None:
-            raise EvaluationRunNotFoundError(f"evaluation run does not exist: {evaluation_id}")
-        return run.model_copy(deep=True)
+        return self._jobs.get(evaluation_id)
+
+    def cancel(self, evaluation_id: str) -> EvaluationRun:
+        return self._jobs.cancel(evaluation_id)
 
     def delete(self, evaluation_id: str) -> None:
-        self.get(evaluation_id)
-        self._store.delete(evaluation_id)
+        self._jobs.delete(evaluation_id)
 
     def results(
         self,
@@ -83,4 +83,9 @@ class EvaluationService:
         if errors_only:
             items = [item for item in items if item.prediction == EvaluationPrediction.ERROR]
         total = len(items)
-        return EvaluationResultPage(items=items[offset:offset + limit], total=total, offset=offset, limit=limit)
+        return EvaluationResultPage(
+            items=items[offset : offset + limit],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )

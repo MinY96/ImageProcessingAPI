@@ -155,6 +155,10 @@ Decision까지 포함된 Recipe를 실제 OK/NG 이미지 폴더에 일괄 적�
 - 개별/다중 Ground Truth 수정 및 revision 충돌 감지
 - 큰 Dataset용 이미지 목록 pagination/filter
 - Graph/Linear Recipe batch 실행
+- Evaluation 전용 local Job Queue + Worker 기반 비동기 실행 (`202 Accepted`)
+- `queued / running / completed / failed / cancel_requested / cancelled` 상태 및 live progress
+- Running/Queued Job cancel, checkpoint, 앱 재시작 시 queued Job 복구
+- Dataset/Recipe revision snapshot 검증으로 Queue 대기 중 변경 감지
 - Decision output + Score output 추출
 - Graph/Pipeline intermediate의 scalar 값만 오판 분석용으로 저장
 - TP/TN/FP/FN, Accuracy, Precision, Recall, Specificity, F1
@@ -388,8 +392,9 @@ Notebook 상단의 `IMAGE_PATH`를 자신의 PNG/JPEG/TIFF 등의 이미지 경�
 | `GET` | `/api/v1/test-datasets/{id}/images` | Dataset 이미지 목록/필터/pagination |
 | `PUT` | `/api/v1/test-datasets/{id}/ground-truth` | 다중 Ground Truth 변경 |
 | `GET` | `/api/v1/evaluations` | EvaluationRun 이력 조회 |
-| `POST` | `/api/v1/evaluations` | Dataset × Decision Recipe 일괄 평가 |
-| `GET` | `/api/v1/evaluations/{id}` | 평가 전체 결과 조회 |
+| `POST` | `/api/v1/evaluations` | Evaluation Job 등록 (`202 Accepted`) |
+| `POST` | `/api/v1/evaluations/{id}/cancel` | Queued/Running Evaluation 취소 요청 |
+| `GET` | `/api/v1/evaluations/{id}` | Job 상태/진행률/평가 결과 조회 |
 | `GET` | `/api/v1/evaluations/{id}/results` | FP/FN/ERROR 등 이미지별 결과 필터 |
 
 실행 endpoint는 `payload`라는 JSON 문자열 form field와 0개 이상의 `files`

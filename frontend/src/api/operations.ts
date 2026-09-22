@@ -1,7 +1,9 @@
 import { api, apiMultipart } from './client';
+import type { ExecutionResponse, OperationSpec } from './types';
+
 export const operationsApi = {
-  list: () => api<unknown[]>('/operations'),
-  get: (operation: string) => api<unknown>(`/operations/${encodeURIComponent(operation)}`),
+  list: () => api<OperationSpec[]>('/operations'),
+  get: (operation: string) => api<OperationSpec>(`/operations/${encodeURIComponent(operation)}`),
   execute: (operation: string, payload: unknown, files: File[] = [], responseFormat: 'json'|'zip' = 'json') =>
-    apiMultipart<unknown>(`/operations/${encodeURIComponent(operation)}/execute?response_format=${responseFormat}`, payload, files),
+    apiMultipart<ExecutionResponse | Blob>(`/operations/${encodeURIComponent(operation)}/execute?response_format=${responseFormat}`, payload, files),
 };

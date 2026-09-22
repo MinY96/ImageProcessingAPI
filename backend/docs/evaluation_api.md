@@ -1,6 +1,8 @@
-# TestDataset / Evaluation API
+# TestDataset / Evaluation Job API
 
-`TestDataset`과 `EvaluationRun`은 Decision까지 포함된 Rule Recipe를 실제 OK/NG 이미지 집합에 일괄 적용해 성능을 검증하기 위한 계층입니다.
+`TestDataset`과 `Evaluation`은 Decision까지 포함된 Recipe를 실제 OK/NG 이미지 집합에 적용해 성능을 검증하기 위한 계층입니다.
+
+v0.6.0부터 Evaluation은 **동기 일괄 실행 방식이 아니라 로컬 Job Queue 방식**으로 동작합니다. `POST /evaluations`는 평가가 끝날 때까지 기다리지 않고 Job을 생성한 뒤 즉시 `202 Accepted`를 반환합니다.
 
 ```text
 Image Folder
@@ -8,6 +10,10 @@ Image Folder
 TestDataset (Ground Truth: OK / NG)
    ↓
 Recipe (Decision output 포함)
+   ↓
+Evaluation Job Queue
+   ↓
+Worker (기본 1개)
    ↓
 EvaluationEngine
    ↓
@@ -27,6 +33,19 @@ Confusion Matrix / Accuracy / Precision / Recall / Specificity / F1
 ```
 
 두 저장소 모두 JSON + 임시파일 + `os.replace()` 방식의 원자적 저장을 사용합니다.
+
+Evaluation 결과는 실행 중 일정 간격으로 checkpoint 저장됩니다.
+
+기본값:
+
+```python
+evaluation_worker_count = 1
+evaluation_checkpoint_interval = 50
+```
+
+One-PC 배포에서는 UI/Recipe Studio 반응성을 보호하기 위해 Worker 1개를 기본값으로 권장합니다.
+
+---
 
 ## 1. TestDataset
 
@@ -85,11 +104,9 @@ C:/SEM/TestSet_01/
 }
 ```
 
-> 이 API는 FastAPI가 이미지 폴더와 같은 로컬 PC에서 실행되는 Windows 데스크톱 구성을 전제로 합니다. 순수 원격 웹 배포에서는 브라우저가 로컬 절대경로를 서버에 직접 노출하지 않으므로 파일 업로드/동기화 계층이 별도로 필요합니다.
+> 이 API는 FastAPI가 이미지 폴더와 같은 로컬 PC에서 실행되는 Windows 데스크톱 구성을 전제로 합니다. 원격 서버 배포에서는 브라우저의 로컬 경로와 서버 경로가 다르므로 파일 업로드/동기화 계층이 별도로 필요합니다.
 
 ### 이미지 목록 조회
-
-큰 Dataset에서 전체 이미지 JSON을 매번 반환하지 않도록 별도 pagination endpoint를 사용합니다.
 
 ```http
 GET /api/v1/test-datasets/{dataset_id}/images?offset=0&limit=100
@@ -113,7 +130,9 @@ PUT /api/v1/test-datasets/{dataset_id}/ground-truth
 
 `ground_truth: null`을 보내면 다시 Unlabeled 상태로 만들 수 있습니다.
 
-## 2. Evaluation 실행
+---
+
+## 2. Evaluation Job 생성
 
 ```http
 POST /api/v1/evaluations
@@ -132,7 +151,37 @@ POST /api/v1/evaluations
 }
 ```
 
-기본 Graph Recipe 형식은 다음 output을 권장합니다.
+정상 등록 시 평가 완료 결과가 아니라 Job 정보가 즉시 반환됩니다.
+
+```http
+HTTP/1.1 202 Accepted
+```
+
+```json
+{
+  "evaluation_id": "e0a9...",
+  "status": "queued",
+  "progress": {
+    "total": 1000,
+    "processed": 0,
+    "percent": 0.0
+  },
+  "created_at": "2026-09-10T06:30:00Z"
+}
+```
+
+API submit 단계에서 다음 항목은 동기 검증합니다.
+
+- Dataset 존재 여부
+- Label 존재 여부 (`fail_on_unlabeled=true`)
+- Recipe 존재 여부
+- Decision output / Score output 존재 여부
+- Graph Recipe의 Decision Node 존재 여부
+- Recipe input binding 정합성
+
+따라서 잘못된 요청은 Queue에 넣지 않고 기존과 동일하게 `404/422`로 반환합니다.
+
+### 권장 Recipe output
 
 ```text
 score  : 최종 scalar feature
@@ -140,11 +189,7 @@ result : "OK" 또는 "NG"
 passed : bool (선택)
 ```
 
-Graph Recipe는 Evaluation에 사용하려면 실제 `DecisionNode`를 포함해야 합니다.
-
-### Reference/Mask가 필요한 Recipe
-
-모든 이미지에서 공통으로 사용하는 Reference image나 Mask는 `shared_image_inputs`로 전달할 수 있습니다.
+### Reference / Mask 입력
 
 ```json
 {
@@ -162,7 +207,206 @@ Graph Recipe는 Evaluation에 사용하려면 실제 `DecisionNode`를 포함해
 
 숫자/문자열과 같은 공통 입력은 `constant_inputs`를 사용합니다.
 
-## 3. 성능 지표
+---
+
+## 3. Job 상태 / Progress 조회
+
+```http
+GET /api/v1/evaluations/{evaluation_id}
+```
+
+실행 중 예시:
+
+```json
+{
+  "evaluation_id": "e0a9...",
+  "status": "running",
+  "progress": {
+    "total": 1000,
+    "processed": 437,
+    "percent": 43.7
+  },
+  "summary": null,
+  "results": [],
+  "failure": null,
+  "created_at": "...",
+  "started_at": "...",
+  "finished_at": null
+}
+```
+
+`progress`는 Worker 메모리의 live 상태를 사용하므로 checkpoint 간격과 관계없이 갱신됩니다. `results`와 `summary`는 checkpoint 시점 또는 최종 완료 시 영속화됩니다.
+
+지원 상태:
+
+```text
+queued
+running
+completed
+failed
+cancel_requested
+cancelled
+```
+
+상태 흐름:
+
+```text
+queued ──────────────→ running ──────────────→ completed
+  │                      │
+  │ cancel               │ cancel
+  ▼                      ▼
+cancelled          cancel_requested
+                         │
+                         ▼
+                    cancelled
+
+running ── execution error ──→ failed
+```
+
+### Frontend 권장 Polling
+
+WebSocket 없이 1~2초 간격 polling이면 충분합니다.
+
+```text
+POST /evaluations
+      ↓
+evaluation_id
+      ↓
+GET /evaluations/{id}
+      ↓
+queued / running
+      ↓
+completed / failed / cancelled
+```
+
+---
+
+## 4. Evaluation 취소
+
+```http
+POST /api/v1/evaluations/{evaluation_id}/cancel
+```
+
+### queued 상태
+
+아직 Worker가 시작하지 않았다면 즉시 `cancelled`가 됩니다.
+
+### running 상태
+
+즉시 강제 thread kill을 하지 않습니다.
+
+```text
+현재 이미지 처리
+      ↓
+cancel_requested 확인
+      ↓
+다음 이미지 실행 안 함
+      ↓
+cancelled
+```
+
+즉 OpenCV가 현재 이미지 하나를 처리한 뒤 안전하게 중지합니다.
+
+완료/실패/취소된 Job에 다시 cancel을 호출하면 현재 상태를 그대로 반환합니다.
+
+---
+
+## 5. Checkpoint
+
+Worker는 기본적으로 50장마다 부분 결과를 저장합니다.
+
+```text
+1 ~ 49       live progress only
+50           checkpoint
+51 ~ 99      live progress only
+100          checkpoint
+...
+완료          final save
+```
+
+설정:
+
+```python
+ApiSettings(
+    evaluation_checkpoint_interval=50,
+)
+```
+
+Checkpoint에는 다음 정보가 저장됩니다.
+
+- 현재 status
+- progress
+- 현재까지의 image result
+- 현재까지의 partial summary
+
+따라서 실행 도중 비정상 종료가 발생하더라도 마지막 checkpoint까지의 결과는 파일에 남습니다.
+
+---
+
+## 6. 앱 종료 / 재시작 복구
+
+### queued Job
+
+앱이 종료되기 전에 아직 실행되지 않은 `queued` Job은 다음 시작 시 Queue에 다시 등록됩니다.
+
+### running / cancel_requested Job
+
+프로세스가 종료된 상태에서는 이전 Worker를 복원할 수 없으므로 시작 시 다음 상태로 변경합니다.
+
+```text
+running
+cancel_requested
+      ↓
+failed
+```
+
+failure 예시:
+
+```json
+{
+  "code": "application_terminated",
+  "message": "Application terminated while evaluation was running. Submit a new evaluation to run it again."
+}
+```
+
+현재 1차 구현은 자동 Resume을 지원하지 않습니다.
+
+---
+
+## 7. Dataset / Recipe Revision 보호
+
+Job 등록 시 다음 snapshot을 저장합니다.
+
+```text
+Dataset
+- dataset_id
+- revision
+- image_count
+
+Recipe
+- name
+- kind
+- version
+- revision
+```
+
+Worker가 실제 실행을 시작하기 전에 현재 Dataset/Recipe와 비교합니다.
+
+예를 들어 Queue 대기 중 Recipe가 수정되면 기존 Job이 새 Recipe를 조용히 실행하지 않고 `failed` 처리됩니다.
+
+```text
+Queued Recipe revision = 4
+Current Recipe revision = 5
+
+→ failed
+→ 새 Evaluation 제출 필요
+```
+
+이 방식으로 평가 결과의 재현성을 보호합니다.
+
+---
+
+## 8. 성능 지표
 
 NG를 positive class로 계산합니다.
 
@@ -186,11 +430,11 @@ FN = 실제 NG / 예측 OK  (Missed NG, 미검)
 - OK Score 통계
 - NG Score 통계
 
-분모가 0인 Precision/Recall/Specificity/F1 항목은 억지로 0을 넣지 않고 `null`을 반환합니다.
+분모가 0인 Precision/Recall/Specificity/F1 항목은 `null`을 반환합니다.
 
-## 4. 이미지별 결과
+---
 
-각 이미지에는 다음 정보가 저장됩니다.
+## 9. 이미지별 결과
 
 ```json
 {
@@ -210,9 +454,11 @@ FN = 실제 NG / 예측 OK  (Missed NG, 미검)
 }
 ```
 
-`capture_node_values=true`일 때 Graph/Pipeline intermediate에서 JSON scalar(`int`, `float`, `bool`, `str`)만 저장합니다. 중간 이미지나 큰 ndarray는 EvaluationRun에 저장하지 않으므로 결과 JSON 크기와 메모리 사용량을 제한합니다.
+`capture_node_values=true`일 때 intermediate에서 JSON scalar(`int`, `float`, `bool`, `str`)만 저장합니다. 중간 이미지나 큰 ndarray는 EvaluationRun에 저장하지 않습니다.
 
-## 5. ERROR 처리
+---
+
+## 10. ERROR 처리
 
 이미지 파일 손상, 경로 유실, Recipe 실행 실패 등은 임의로 OK/NG에 포함하지 않습니다.
 
@@ -223,13 +469,17 @@ correct    = null
 
 Confusion Matrix와 classification metric은 정상 실행된 이미지에 대해서만 계산하고, 별도로 `error_images`, `execution_success_rate`를 제공합니다.
 
-## 6. 오판 필터
+Job 자체를 계속 실행할 수 없는 오류는 image-level `ERROR`가 아니라 Job `failed`로 기록합니다.
+
+---
+
+## 11. 오판 필터
 
 ```http
-# False NG (실제 OK → 예측 NG)
+# False NG
 GET /api/v1/evaluations/{id}/results?ground_truth=OK&prediction=NG
 
-# Missed NG (실제 NG → 예측 OK)
+# Missed NG
 GET /api/v1/evaluations/{id}/results?ground_truth=NG&prediction=OK
 
 # 전체 ERROR
@@ -241,28 +491,51 @@ GET /api/v1/evaluations/{id}/results?correct=false
 
 모든 결과 조회는 `offset`, `limit` pagination을 지원합니다.
 
-## 7. EvaluationRun snapshot
+실행 중에는 마지막 checkpoint까지 저장된 결과가 반환될 수 있고, 완료 후에는 전체 결과가 반환됩니다.
 
-EvaluationRun은 실행 당시 Dataset과 Recipe 정보를 함께 고정 기록합니다.
+---
 
-```text
-Dataset
-- dataset_id
-- revision
-- image_count
+## 12. Evaluation 목록 / 상태 필터
 
-Recipe
-- name
-- kind (linear / graph)
-- version
-- revision
+```http
+GET /api/v1/evaluations
+GET /api/v1/evaluations?dataset_id=sem_bridge_validation_01
+GET /api/v1/evaluations?recipe_name=rule_branch_binary_score
+GET /api/v1/evaluations?status=running
+GET /api/v1/evaluations?status=completed
 ```
 
-따라서 이후 Dataset의 Ground Truth 또는 Recipe가 수정되어도 "어떤 revision으로 테스트했는지"를 확인할 수 있습니다.
+Frontend의 Running / Waiting / History 영역 구성에 사용할 수 있습니다.
 
-현재 Recipe snapshot은 metadata snapshot입니다. 과거 Recipe 본문 자체를 immutable version archive로 보존하는 기능은 별도 Recipe Version Store 확장 항목입니다.
+---
 
-## 8. 주요 Endpoint
+## 13. 삭제 규칙
+
+```http
+DELETE /api/v1/evaluations/{id}
+```
+
+다음 active 상태는 바로 삭제할 수 없습니다.
+
+```text
+queued
+running
+cancel_requested
+```
+
+먼저 `/cancel`을 호출해야 합니다. Active Job 삭제 시 `409 evaluation_active`를 반환합니다.
+
+다음 상태는 삭제 가능합니다.
+
+```text
+completed
+failed
+cancelled
+```
+
+---
+
+## 14. 주요 Endpoint
 
 | Method | Endpoint | 설명 |
 |---|---|---|
@@ -277,8 +550,9 @@ Recipe
 | PUT | `/api/v1/test-datasets/{id}/images/{image_id}` | 이미지 Ground Truth/metadata 수정 |
 | DELETE | `/api/v1/test-datasets/{id}/images/{image_id}` | Dataset에서 이미지 제거 |
 | PUT | `/api/v1/test-datasets/{id}/ground-truth` | 다중 Ground Truth 변경 |
-| GET | `/api/v1/evaluations` | 평가 이력 목록 |
-| POST | `/api/v1/evaluations` | Dataset × Recipe 평가 실행/저장 |
-| GET | `/api/v1/evaluations/{id}` | 평가 전체 결과 조회 |
+| GET | `/api/v1/evaluations` | Job/평가 이력 목록 및 상태 필터 |
+| POST | `/api/v1/evaluations` | Evaluation Job 등록 (`202 Accepted`) |
+| POST | `/api/v1/evaluations/{id}/cancel` | queued/running Evaluation 취소 요청 |
+| GET | `/api/v1/evaluations/{id}` | 상태/진행률/결과 조회 |
 | GET | `/api/v1/evaluations/{id}/results` | 이미지별 결과 필터/pagination |
-| DELETE | `/api/v1/evaluations/{id}` | 평가 이력 삭제 |
+| DELETE | `/api/v1/evaluations/{id}` | terminal Evaluation 이력 삭제 |

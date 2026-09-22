@@ -1,4 +1,5 @@
 export * from './client';
+export * from './types';
 export * from './system';
 export * from './operations';
 export * from './analysis';
@@ -9,3 +10,4 @@ export * from './models';
 export * from './labels';
 export * from './datasets';
 export * from './evaluations';
+export * from './synthetic';

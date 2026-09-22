@@ -24,30 +24,55 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
 ```
 
-(.venv) D:\개발\1_ImageProcessingTool\ImageProcessingAPI\backend>python -m pytest -q
+# Image Processing Studio
 
-====================================================================== ERRORS ======================================================================
-_______________________________________________ ERROR collecting tests/test_evaluation_job_queue.py ________________________________________________
-ImportError while importing test module 'D:\개발\1_ImageProcessingTool\ImageProcessingAPI\backend\tests\test_evaluation_job_queue.py'.
-Hint: make sure your test modules/packages have valid Python names.
-Traceback:
-C:\Users\10007166\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-D:\개발\1_ImageProcessingTool\ImageProcessingAPI\tests\test_evaluation_job_queue.py:9: in <module>
-    ???
-E   ImportError: cannot import name 'EvaluationActiveError' from 'src.evaluation' (D:\개발\1_ImageProcessingTool\ImageProcessingAPI\backend\src\evaluation\__init__.py)
-================================================================= warnings summary =================================================================
-.venv\Lib\site-packages\fastapi\testclient.py:1
-  D:\개발\1_ImageProcessingTool\ImageProcessingAPI\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
-    from starlette.testclient import TestClient as TestClient  # noqa
+OpenCV 기반 Image Processing API와 React 기반 Visual Studio UI를 하나의 저장소에서 관리하는 프로젝트입니다.
 
-.venv\Lib\site-packages\starlette\testclient.py:53
-  D:\개발\1_ImageProcessingTool\ImageProcessingAPI\backend\.venv\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
-    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+## Repository structure
 
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-============================================================= short test summary info ==============================================================
-ERROR tests/test_evaluation_job_queue.py
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-2 warnings, 1 error in 2.50s
+```text
+ImageProcessingAPI/
+├─ backend/      # Python / FastAPI / OpenCV processing engine
+├─ frontend/     # React / TypeScript / Vite UI
+├─ .gitignore
+└─ README.md
+```
+
+## Backend
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python -m pytest -q
+```
+
+Backend 상세 내용은 [`backend/README.md`](backend/README.md)를 참고하세요.
+
+## Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend 상세 내용은 [`frontend/README.md`](frontend/README.md)를 참고하세요.
+
+## Development URLs
+
+```text
+Frontend  http://localhost:5173
+Backend   http://localhost:8000
+Swagger   http://localhost:8000/docs
+```
+
+Frontend Vite dev server는 `/api` 요청을 Backend `localhost:8000`으로 proxy합니다.
+
+## Main UI
+
+- Recipe Studio
+- Image Lab
+- Synthetic NG Generator
+- Dataset / Annotation
+- Evaluation Job Queue
+- Settings / Model Registry

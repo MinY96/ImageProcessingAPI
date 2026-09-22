@@ -1,58 +1,55 @@
-import { useState } from 'react';
-import { Badge, Button, Panel, SearchInput, Tabs } from '../components/ui';
-import { datasets } from '../mocks/data';
+import { useEffect, useMemo, useState } from 'react';
+import { datasetsApi, labelsApi, type LabelClassSummary, type LabelDocument, type LabelSummary, type TestDatasetImage, type TestDatasetSummary } from '../api';
+import { Badge, Button, EmptyState, InlineError, Loading, Modal, Panel, SearchInput, Tabs } from '../components/ui';
+import { errorMessage, shortDate } from '../lib/format';
 
-const images = Array.from({length:18},(_,i)=>({name:`SEM_${String(i+1).padStart(4,'0')}.png`,label:i%5===0?'NG':'OK'}));
+function DatasetCreateModal({ onClose, onDone }: {onClose:()=>void;onDone:()=>void}) {
+  const [name,setName]=useState(''); const [id,setId]=useState(''); const [root,setRoot]=useState(''); const [description,setDescription]=useState(''); const [error,setError]=useState<string|null>(null); const [busy,setBusy]=useState(false);
+  const submit=async()=>{if(!name)return;setBusy(true);setError(null);try{await datasetsApi.create({dataset_id:id||null,name,description:description||null,root_path:root||null});onDone();onClose();}catch(e){setError(errorMessage(e));}finally{setBusy(false);}};
+  return <Modal title="New Test Dataset" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!name||busy} onClick={submit}>Create</Button></>}><InlineError message={error}/><div className="form-grid"><div className="form-group"><label>Name</label><input className="input" value={name} onChange={e=>setName(e.target.value)}/></div><div className="form-group"><label>Dataset ID</label><input className="input" value={id} onChange={e=>setId(e.target.value)} placeholder="auto if blank"/></div><div className="form-group"><label>Root Path</label><input className="input" value={root} onChange={e=>setRoot(e.target.value)} placeholder="D:\\dataset"/></div><div className="form-group"><label>Description</label><input className="input" value={description} onChange={e=>setDescription(e.target.value)}/></div></div></Modal>;
+}
 
-function TestDatasetView() {
+function ImportModal({ dataset, onClose, onDone }: {dataset:TestDatasetSummary;onClose:()=>void;onDone:()=>void}) {
+  const [path,setPath]=useState(dataset.root_path??''); const [recursive,setRecursive]=useState(true); const [autoLabel,setAutoLabel]=useState(true); const [replace,setReplace]=useState(false); const [error,setError]=useState<string|null>(null); const [busy,setBusy]=useState(false);
+  const submit=async()=>{if(!path)return;setBusy(true);setError(null);try{await datasetsApi.importFolder(dataset.dataset_id,{folder_path:path,recursive,extensions:['.png','.jpg','.jpeg','.bmp','.tif','.tiff'],auto_label_from_parent:autoLabel,label_mapping:{OK:'OK',NG:'NG'},replace_existing:replace,expected_revision:dataset.revision});onDone();onClose();}catch(e){setError(errorMessage(e));}finally{setBusy(false);}};
+  return <Modal title="Import Folder" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!path||busy} onClick={submit}>{busy?'Importing...':'Import'}</Button></>}><InlineError message={error}/><div className="form-group"><label>Backend Folder Path</label><input className="input" value={path} onChange={e=>setPath(e.target.value)} placeholder="D:\\images"/></div><div className="checkbox-row" style={{marginTop:14}}><label><input type="checkbox" checked={recursive} onChange={e=>setRecursive(e.target.checked)}/> Recursive</label><label><input type="checkbox" checked={autoLabel} onChange={e=>setAutoLabel(e.target.checked)}/> OK/NG parent auto-label</label><label><input type="checkbox" checked={replace} onChange={e=>setReplace(e.target.checked)}/> Replace existing</label></div></Modal>;
+}
+
+function LabelCreateModal({onClose,onDone}:{onClose:()=>void;onDone:()=>void}) {
+  const [name,setName]=useState('');const [id,setId]=useState('');const [uri,setUri]=useState('');const [width,setWidth]=useState(1920);const [height,setHeight]=useState(1080);const [error,setError]=useState<string|null>(null);
+  const submit=async()=>{try{setError(null);await labelsApi.create({image_id:id||null,image_name:name,source_uri:uri||null,width,height,tags:[],metadata:{},annotations:[]});onDone();onClose();}catch(e){setError(errorMessage(e));}};
+  return <Modal title="New Label Document" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit} disabled={!name}>Create</Button></>}><InlineError message={error}/><div className="form-grid"><div className="form-group"><label>Image Name</label><input className="input" value={name} onChange={e=>setName(e.target.value)}/></div><div className="form-group"><label>Image ID</label><input className="input" value={id} onChange={e=>setId(e.target.value)} placeholder="auto if blank"/></div><div className="form-group"><label>Source URI / Path</label><input className="input" value={uri} onChange={e=>setUri(e.target.value)}/></div><div className="form-group"><label>Width</label><input className="input" type="number" value={width} onChange={e=>setWidth(Number(e.target.value))}/></div><div className="form-group"><label>Height</label><input className="input" type="number" value={height} onChange={e=>setHeight(Number(e.target.value))}/></div></div></Modal>;
+}
+
+function TestDatasetView({openCreate,openImport}:{openCreate:()=>void;openImport:(d:TestDatasetSummary)=>void}) {
+  const [datasets,setDatasets]=useState<TestDatasetSummary[]>([]); const [selectedId,setSelectedId]=useState(''); const [images,setImages]=useState<TestDatasetImage[]>([]); const [total,setTotal]=useState(0); const [search,setSearch]=useState(''); const [label,setLabel]=useState(''); const [selected,setSelected]=useState<Set<string>>(new Set()); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null);
+  const selectedDataset=datasets.find(d=>d.dataset_id===selectedId)??null;
+  const loadDatasets=async()=>{setLoading(true);setError(null);try{const d=await datasetsApi.list();setDatasets(d);if(!selectedId&&d.length)setSelectedId(d[0].dataset_id);}catch(e){setError(errorMessage(e));}finally{setLoading(false);}};
+  const loadImages=async()=>{if(!selectedId){setImages([]);return;}try{const q=new URLSearchParams({limit:'500'});if(search)q.set('search',search);if(label)q.set('ground_truth',label);const page=await datasetsApi.listImages(selectedId,`?${q}`);setImages(page.items);setTotal(page.total);setSelected(new Set());}catch(e){setError(errorMessage(e));}};
+  useEffect(()=>{void loadDatasets();},[]);useEffect(()=>{void loadImages();},[selectedId,label]);
+  const applySearch=()=>void loadImages();
+  const batch=async(gt:'OK'|'NG'|null)=>{if(!selectedDataset||!selected.size)return;try{await datasetsApi.batchGroundTruth(selectedDataset.dataset_id,{image_ids:[...selected],ground_truth:gt,expected_revision:selectedDataset.revision});await loadDatasets();await loadImages();}catch(e){setError(errorMessage(e));}};
+  const removeDataset=async()=>{if(!selectedDataset||!window.confirm(`${selectedDataset.name} 삭제?`))return;try{await datasetsApi.remove(selectedDataset.dataset_id,selectedDataset.revision);setSelectedId('');await loadDatasets();}catch(e){setError(errorMessage(e));}};
+  const toggle=(id:string)=>setSelected(v=>{const n=new Set(v);n.has(id)?n.delete(id):n.add(id);return n;});
   return <div className="dataset-layout">
-    <Panel title="Datasets" actions={<Button variant="ghost">＋</Button>} flush>
-      <div style={{padding:8}}><SearchInput placeholder="Dataset 검색"/></div>
-      <div className="list" style={{overflow:'auto',height:'calc(100% - 46px)'}}>
-        {datasets.map((d,i)=><div className={`list-item ${i===0?'active':''}`} key={d.name}><div><div>{d.name}</div><div style={{fontSize:9,color:'var(--text-3)',marginTop:2}}>{d.images.toLocaleString()} images · rev {d.revision}</div></div><span className="list-meta">›</span></div>)}
-      </div>
-    </Panel>
-    <Panel title="SEM_Wafer_Test_V3" subtitle="1,240 images · revision 9" actions={<><Button>Edit</Button><Button variant="danger">Delete</Button></>} flush>
-      <div className="dataset-browser">
-        <div className="dataset-browser-toolbar"><div style={{width:220}}><SearchInput placeholder="이미지 검색"/></div><select className="select" style={{width:110}}><option>All Labels</option><option>OK</option><option>NG</option></select><Button>Set OK</Button><Button>Set NG</Button><Button>Clear</Button><span style={{marginLeft:'auto',fontSize:9,color:'var(--text-3)'}}>0 selected</span></div>
-        <div className="thumb-grid">
-          {images.map((img)=><div className={`thumb ${img.label==='NG'?'ng':''}`} key={img.name}><div className="thumb-img"/><div className="thumb-footer"><input type="checkbox"/><span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{img.name}</span><Badge status={img.label==='NG'?'failed':'completed'}>{img.label}</Badge></div></div>)}
-        </div>
-      </div>
-    </Panel>
+    <Panel title="Datasets" actions={<Button variant="ghost" onClick={openCreate}>＋</Button>} flush><div style={{padding:8}}><SearchInput placeholder="Dataset 검색"/></div><div className="list" style={{overflow:'auto',height:'calc(100% - 46px)'}}>{loading?<Loading/>:datasets.length?datasets.map(d=><button className={`list-item list-button ${selectedId===d.dataset_id?'active':''}`} key={d.dataset_id} onClick={()=>setSelectedId(d.dataset_id)}><div style={{textAlign:'left'}}><div>{d.name}</div><div className="list-sub">{d.image_count.toLocaleString()} images · OK {d.ok_count} / NG {d.ng_count} · rev {d.revision}</div></div><span className="list-meta">›</span></button>):<EmptyState/>}</div></Panel>
+    <Panel title={selectedDataset?.name??'Dataset'} subtitle={selectedDataset?`${total} images · revision ${selectedDataset.revision}`:''} actions={selectedDataset?<><Button onClick={()=>openImport(selectedDataset)}>Import Folder</Button><Button variant="danger" onClick={removeDataset}>Delete</Button></>:undefined} flush><InlineError message={error}/>{selectedDataset?<div className="dataset-browser"><div className="dataset-browser-toolbar"><div style={{width:220}}><SearchInput placeholder="이미지 검색" value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==='Enter'&&applySearch()}/></div><Button onClick={applySearch}>Search</Button><select className="select" style={{width:110}} value={label} onChange={e=>setLabel(e.target.value)}><option value="">All Labels</option><option>OK</option><option>NG</option></select><Button onClick={()=>void batch('OK')}>Set OK</Button><Button onClick={()=>void batch('NG')}>Set NG</Button><Button onClick={()=>void batch(null)}>Clear</Button><span style={{marginLeft:'auto',fontSize:9,color:'var(--text-3)'}}>{selected.size} selected</span></div><div className="thumb-grid">{images.length?images.map(img=><div className={`thumb ${img.ground_truth==='NG'?'ng':''}`} key={img.image_id}><div className="dataset-file-card"><div className="dataset-file-icon">IMG</div><div className="dataset-file-path" title={img.file_path}>{img.relative_path??img.file_path}</div></div><div className="thumb-footer"><input type="checkbox" checked={selected.has(img.image_id)} onChange={()=>toggle(img.image_id)}/><span className="ellipsis">{img.image_id}</span><Badge status={img.ground_truth==='NG'?'failed':img.ground_truth==='OK'?'completed':''}>{img.ground_truth??'UNLABELED'}</Badge></div></div>):<EmptyState>No images</EmptyState>}</div></div>:<EmptyState>Dataset을 선택하세요.</EmptyState>}</Panel>
   </div>;
 }
 
-function AnnotationView() {
+function AnnotationView({openCreate}:{openCreate:()=>void}) {
+  const [items,setItems]=useState<LabelSummary[]>([]);const [classes,setClasses]=useState<LabelClassSummary[]>([]);const [selectedId,setSelectedId]=useState('');const [doc,setDoc]=useState<LabelDocument|null>(null);const [search,setSearch]=useState('');const [error,setError]=useState<string|null>(null);
+  const load=async()=>{try{const q=new URLSearchParams({limit:'500'});if(search)q.set('search',search);const [list,c]=await Promise.all([labelsApi.list(`?${q}`),labelsApi.classes()]);setItems(list.items);setClasses(c);if(!selectedId&&list.items.length)setSelectedId(list.items[0].image_id);}catch(e){setError(errorMessage(e));}};
+  useEffect(()=>{void load();},[]);useEffect(()=>{if(!selectedId){setDoc(null);return;}void labelsApi.get(selectedId).then(setDoc).catch(e=>setError(errorMessage(e)));},[selectedId]);
+  const removeDoc=async()=>{if(!doc||!window.confirm(`${doc.image_name} label document 삭제?`))return;try{await labelsApi.remove(doc.image_id,doc.revision);setSelectedId('');setDoc(null);await load();}catch(e){setError(errorMessage(e));}};
   return <div className="annotation-layout">
-    <Panel title="Images" actions={<Button variant="ghost">＋</Button>} flush>
-      <div style={{padding:8}}><SearchInput placeholder="Label Document 검색"/></div>
-      <div className="list">
-        {['SEM_0001.png','SEM_0002.png','SEM_0003.png','SEM_0004.png','SEM_0005.png'].map((x,i)=><div key={x} className={`list-item ${i===0?'active':''}`}><span>▧</span><div><div>{x}</div><div style={{fontSize:9,color:'var(--text-3)',marginTop:2}}>{i===0?'2 annotations':'No annotation'}</div></div></div>)}
-      </div>
-    </Panel>
-    <Panel title="Annotation Editor" subtitle="SEM_0001.png · 2048 × 1536" flush>
-      <div style={{height:'100%',display:'grid',gridTemplateRows:'43px 1fr'}}>
-        <div className="annotation-toolbar"><Button variant="primary">BBox</Button><Button>Polygon</Button><Button>Point</Button><Button>Polyline</Button><span style={{flex:1}}/><Button>Fit</Button><Button>1:1</Button></div>
-        <div className="annotation-stage"><div className="annotation-image"><div className="annotation-box"/><div className="annotation-poly"/></div></div>
-      </div>
-    </Panel>
-    <Panel title="Annotations" subtitle="2 objects" flush>
-      <div className="list"><div className="list-item active"><span style={{color:'#d98b6c'}}>□</span><div><div>scratch</div><div style={{fontSize:9,color:'var(--text-3)'}}>bbox · ann_001</div></div></div><div className="list-item"><span style={{color:'#7da3d8'}}>◇</span><div><div>pattern</div><div style={{fontSize:9,color:'var(--text-3)'}}>polygon · ann_002</div></div></div></div>
-      <div className="inspector-section"><div className="inspector-heading">Selected Annotation</div><div className="field"><div className="field-label">Class</div><select className="select"><option>scratch</option><option>particle</option><option>pattern</option></select></div><div className="field"><div className="field-label">Tag</div><input className="input" value="surface" readOnly/></div><div style={{display:'flex',gap:6,marginTop:10}}><Button>Update</Button><Button variant="danger">Delete</Button></div></div>
-      <div className="inspector-section"><div className="inspector-heading">Class Summary</div><div style={{fontSize:10,lineHeight:2,color:'var(--text-2)'}}>scratch <span style={{float:'right'}}>1,250</span><br/>particle <span style={{float:'right'}}>820</span><br/>pattern <span style={{float:'right'}}>150</span></div></div>
-    </Panel>
+    <Panel title="Label Documents" actions={<Button variant="ghost" onClick={openCreate}>＋</Button>} flush><div style={{padding:8,display:'flex',gap:5}}><SearchInput placeholder="Label Document 검색" value={search} onChange={e=>setSearch(e.target.value)}/><Button onClick={()=>void load()}>Search</Button></div><div className="list">{items.map(x=><button key={x.image_id} className={`list-item list-button ${selectedId===x.image_id?'active':''}`} onClick={()=>setSelectedId(x.image_id)}><span>▧</span><div style={{textAlign:'left'}}><div>{x.image_name}</div><div className="list-sub">{x.annotation_count} annotations · rev {x.revision}</div></div></button>)}</div></Panel>
+    <Panel title="Annotation Document" subtitle={doc?`${doc.image_name} · ${doc.width} × ${doc.height}`:''} actions={doc?<Button variant="danger" onClick={removeDoc}>Delete Document</Button>:undefined} flush><InlineError message={error}/>{doc?<div className="annotation-stage api-annotation-stage"><div className="annotation-meta-card"><strong>{doc.image_name}</strong><span>image_id: {doc.image_id}</span><span>source: {doc.source_uri??'not set'}</span><span>size: {doc.width} × {doc.height}</span><span>tags: {doc.tags.join(', ')||'-'}</span><span>updated: {shortDate(doc.updated_at)}</span><div className="annotation-note">현재 Label API는 이미지 binary를 제공하지 않으므로 source_uri 메타데이터와 annotation 좌표를 표시합니다.</div></div></div>:<EmptyState>Label Document를 선택하세요.</EmptyState>}</Panel>
+    <Panel title="Annotations" subtitle={`${doc?.annotations.length??0} objects`} flush>{doc?<><div className="list annotation-object-list">{doc.annotations.length?doc.annotations.map((a,i)=><div className="list-item" key={a.annotation_id??i}><span>{a.type==='bbox'?'□':a.type==='point'?'•':'◇'}</span><div><div>{a.label}</div><div className="list-sub">{a.type} · {a.annotation_id??`#${i+1}`}</div></div></div>):<EmptyState>No annotations</EmptyState>}</div><div className="inspector-section"><div className="inspector-heading">Class Summary</div><div className="feature-list">{classes.map(c=><div key={c.label}><span>{c.label}</span><strong>{c.annotation_count} / {c.image_count} img</strong></div>)}</div></div></>:<EmptyState/>}</Panel>
   </div>;
 }
 
 export function DatasetPage() {
-  const [tab, setTab] = useState('Test Dataset');
-  return <div className="page">
-    <div className="page-toolbar">
-      <div className="page-title">데이터셋</div><span className="page-subtitle">Test Dataset · Ground Truth · Annotation</span>
-      {tab === 'Test Dataset' ? <><Button>Import Folder</Button><Button variant="primary">New Dataset</Button></> : <><Button>Class Summary</Button><Button variant="primary">New Label Document</Button></>}
-    </div>
-    <Tabs items={['Test Dataset','Annotation']} active={tab} onChange={setTab}/>
-    <div className="page-content" style={{overflow:'hidden'}}>{tab === 'Test Dataset' ? <TestDatasetView/> : <AnnotationView/>}</div>
-  </div>;
+  const [tab,setTab]=useState('Test Dataset');const [createDataset,setCreateDataset]=useState(false);const [importDataset,setImportDataset]=useState<TestDatasetSummary|null>(null);const [createLabel,setCreateLabel]=useState(false);const [refreshKey,setRefreshKey]=useState(0);
+  return <div className="page">{createDataset&&<DatasetCreateModal onClose={()=>setCreateDataset(false)} onDone={()=>setRefreshKey(v=>v+1)}/>} {importDataset&&<ImportModal dataset={importDataset} onClose={()=>setImportDataset(null)} onDone={()=>setRefreshKey(v=>v+1)}/>} {createLabel&&<LabelCreateModal onClose={()=>setCreateLabel(false)} onDone={()=>setRefreshKey(v=>v+1)}/>}<div className="page-toolbar"><div className="page-title">데이터셋</div><span className="page-subtitle">Test Dataset · Ground Truth · Annotation</span>{tab==='Test Dataset'?<Button variant="primary" onClick={()=>setCreateDataset(true)}>New Dataset</Button>:<Button variant="primary" onClick={()=>setCreateLabel(true)}>New Label Document</Button>}</div><Tabs items={['Test Dataset','Annotation']} active={tab} onChange={setTab}/><div className="page-content" style={{overflow:'hidden'}} key={refreshKey}>{tab==='Test Dataset'?<TestDatasetView openCreate={()=>setCreateDataset(true)} openImport={setImportDataset}/>:<AnnotationView openCreate={()=>setCreateLabel(true)}/>}</div></div>;
 }

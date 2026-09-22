@@ -1,12 +1,12 @@
-import type { ButtonHTMLAttributes, PropsWithChildren, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode } from 'react';
 
 type ButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default'|'primary'|'danger'|'ghost' }>;
 export function Button({ children, variant = 'default', className = '', ...props }: ButtonProps) {
   return <button className={`btn ${variant === 'default' ? '' : variant} ${className}`} {...props}>{children}</button>;
 }
 
-export function IconButton({ children, title }: PropsWithChildren<{ title?: string }>) {
-  return <button className="icon-btn" title={title}>{children}</button>;
+export function IconButton({ children, title, ...props }: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement> & { title?: string }>) {
+  return <button className="icon-btn" title={title} {...props}>{children}</button>;
 }
 
 export function Panel({ title, subtitle, actions, children, className = '', flush = false }: PropsWithChildren<{ title?: string; subtitle?: string; actions?: ReactNode; className?: string; flush?: boolean }>) {
@@ -31,8 +31,8 @@ export function ProgressBar({ value }: { value: number }) {
   return <div className="progress"><span style={{ width: `${safe}%` }} /></div>;
 }
 
-export function SearchInput({ placeholder = '검색' }: { placeholder?: string }) {
-  return <div className="search"><input className="input" placeholder={placeholder} /></div>;
+export function SearchInput({ placeholder = '검색', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <div className="search"><input className="input" placeholder={placeholder} {...props} /></div>;
 }
 
 export function Tabs({ items, active, onChange }: { items: string[]; active: string; onChange?: (item: string) => void }) {
@@ -47,11 +47,23 @@ export function Modal({ title, children, onClose, footer }: PropsWithChildren<{ 
   </div></div>;
 }
 
-
 export function Field({ label, children, help }: PropsWithChildren<{ label: string; help?: string }>) {
   return <div className="field"><div className="field-label">{label}</div><div className="field-stack">{children}{help && <div className="help">{help}</div>}</div></div>;
 }
 
 export function Kpi({ label, value, meta }: { label: string; value: string; meta?: string }) {
   return <div className="kpi"><div className="kpi-label">{label}</div><div className="kpi-value">{value}</div>{meta && <div className="kpi-meta">{meta}</div>}</div>;
+}
+
+export function EmptyState({ children = '데이터가 없습니다.' }: PropsWithChildren) {
+  return <div className="empty-state">{children}</div>;
+}
+
+export function InlineError({ message }: { message?: string | null }) {
+  if (!message) return null;
+  return <div className="inline-error">{message}</div>;
+}
+
+export function Loading({ label = 'Loading...' }: { label?: string }) {
+  return <div className="empty-state">{label}</div>;
 }
