@@ -14,10 +14,14 @@ React + TypeScript + Vite 기반 Image Processing Studio 프론트엔드입니�
 ## 페이지
 
 - `/recipe-studio`
-  - 실제 Recipe / Operation / Workflow Feature / Scalar Operator 조회
-  - Linear / Graph Recipe 구조 Canvas 표시
-  - Recipe Validate / Run / Clone / Save / Delete
-  - 실제 Output / Intermediate image 표시
+  - Linear / Graph Recipe 신규 Draft 생성 및 Metadata 편집
+  - Operation / Workflow Feature / Scalar Operator / ROI / Decision / SubRecipe Node 추가
+  - React Flow 기반 Canvas에서 Graph 연결/해제 및 실제 input/output binding 편집
+  - Linear Step 순서 변경, 이전 Step/Input binding 및 parameter 편집
+  - Graph Input / Output, Node parameter, SubRecipe binding 편집
+  - Draft Validate / Draft Run / Save / Clone / Reload / Delete
+  - Recipe input별 이미지·모델·JSON 실행 입력 매핑
+  - Validation 오류 / Output / Intermediate image 확인
 - `/image-lab`
   - 이미지 업로드
   - Image Analysis
@@ -181,8 +185,16 @@ Label API는 annotation CRUD를 지원하지만 `source_uri`의 원본 이미지
 
 ### Recipe editor
 
-현재 Recipe Studio Canvas는 실제 Recipe 구조를 조회해 표시하고 실행/검증 API와 연결되어 있습니다.
-노드 Drag & Drop, typed edge editing, ROI canvas, Undo/Redo 등 완전한 Visual Recipe Authoring 기능은 다음 단계 확장 항목입니다.
+Recipe Studio는 실제 Backend `PipelineSpec` / `GraphRecipeSpec`을 Draft state로 직접 편집합니다.
+Graph Canvas의 edge는 실제 `graph_input` / `node_output` binding과 연결되고, Linear Recipe는 순서 제약을 지키는 binding selector를 사용합니다.
+
+현재 후속 확장 항목은 다음과 같습니다.
+
+- Undo / Redo history
+- ROI를 이미지 위에서 직접 그리는 Canvas editor
+- Node multi-select / copy / paste
+- Auto layout / group / comment node
+- Validation 오류 Node highlight 및 focus
 
 ## Evaluation Job Queue
 

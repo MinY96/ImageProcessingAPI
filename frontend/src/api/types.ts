@@ -37,10 +37,47 @@ export type OperationSpec = {
   constraints: JsonMap[];
 };
 
+
+export type WorkflowPortSpec = {
+  name: string;
+  kind: string;
+  required: boolean;
+  description?: string | null;
+};
+
+export type FeatureSpec = {
+  name: string;
+  display_name: string;
+  category: string;
+  description?: string | null;
+  version: string;
+  inputs: WorkflowPortSpec[];
+  parameters: Record<string, ParameterSpec>;
+  outputs: WorkflowPortSpec[];
+};
+
+export type ScalarOperatorSpec = {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  min_inputs: number;
+  max_inputs?: number | null;
+  required_input_names: string[];
+  parameters: Record<string, JsonMap>;
+};
+
+export type PipelineInputReference = { type: 'pipeline_input'; input_name: string };
+export type StepOutputReference = { type: 'step_output'; step_id: string; output_name: string };
+export type PipelineValueReference = PipelineInputReference | StepOutputReference;
+
+export type GraphInputReference = { type: 'graph_input'; input_name: string };
+export type NodeOutputReference = { type: 'node_output'; node_id: string; output_name: string };
+export type GraphValueReference = GraphInputReference | NodeOutputReference;
+
 export type PipelineStepSpec = {
   id: string;
   operation: string;
-  inputs?: Record<string, JsonMap>;
+  inputs?: Record<string, PipelineValueReference>;
   params?: JsonMap;
 };
 
@@ -51,13 +88,13 @@ export type PipelineSpec = {
   version: string;
   inputs: InputSlotSpec[];
   steps: PipelineStepSpec[];
-  outputs: Record<string, JsonMap>;
+  outputs: Record<string, PipelineValueReference>;
 };
 
 export type GraphNodeSpec = {
   id: string;
   node_type: string;
-  inputs?: Record<string, JsonMap>;
+  inputs?: Record<string, GraphValueReference>;
   params?: JsonMap;
   operation?: string;
   feature?: string;
@@ -74,7 +111,7 @@ export type GraphRecipeSpec = {
   version: string;
   inputs: InputSlotSpec[];
   nodes: GraphNodeSpec[];
-  outputs: Record<string, JsonMap>;
+  outputs: Record<string, GraphValueReference>;
 };
 
 export type RecipeSummary = {

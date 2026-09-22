@@ -1,5 +1,5 @@
 import { api, apiMultipart } from './client';
-import type { ExecutionResponse, GraphRecipeSpec } from './types';
+import type { ExecutionResponse, FeatureSpec, GraphRecipeSpec, ScalarOperatorSpec } from './types';
 
 export type WorkflowValidationResponse = {
   valid: boolean;
@@ -11,8 +11,8 @@ export type WorkflowValidationResponse = {
 };
 
 export const workflowApi = {
-  features: () => api<unknown[]>('/workflow/features'),
-  operators: () => api<unknown[]>('/workflow/operators'),
+  features: () => api<FeatureSpec[]>('/workflow/features'),
+  operators: () => api<ScalarOperatorSpec[]>('/workflow/operators'),
   validate: (body: GraphRecipeSpec) => api<WorkflowValidationResponse>('/workflow/validate', { method:'POST', body:JSON.stringify(body) }),
   execute: (payload: unknown, files: File[] = [], responseFormat: 'json'|'zip' = 'json') =>
     apiMultipart<ExecutionResponse | Blob>(`/workflow/execute?response_format=${responseFormat}`, payload, files),

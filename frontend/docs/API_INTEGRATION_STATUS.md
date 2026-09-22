@@ -3,7 +3,7 @@
 ## Completed
 
 - Backend Evaluation Job Queue restored and routed through FastAPI lifespan/service/routes.
-- Recipe Studio uses Recipe / Operation / Workflow APIs.
+- Recipe Studio is a writable Linear/Graph editor using Recipe / Operation / Workflow APIs, including draft validate/execute and stored Recipe CRUD.
 - Image Lab uses Analysis / Operation / Pipeline / Recipe execution APIs.
 - Synthetic NG Generator uses all Synthetic API groups: methods, assets, diffusion status/unload, generation.
 - Dataset page uses TestDataset APIs and actual Label/Annotation metadata APIs.
