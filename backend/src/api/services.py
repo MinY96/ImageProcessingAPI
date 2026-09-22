@@ -7,6 +7,7 @@ from src.machine_learning import ModelRegistry
 from src.pipeline import PipelineCatalog, PipelineExecutor
 from src.recipe import RecipeService
 from src.registry import OperationRegistry
+from src.synthetic import SyntheticService
 from src.workflow import (
     FeatureRegistry,
     ScalarOperatorRegistry,
@@ -32,4 +33,5 @@ class ApiServices:
     label_service: LabelService
     test_dataset_service: TestDatasetService
     evaluation_service: EvaluationService
+    synthetic_service: SyntheticService
     settings: ApiSettings

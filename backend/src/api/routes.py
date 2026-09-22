@@ -35,6 +35,7 @@ from .models import (
 )
 from .recipe_routes import create_recipe_router
 from .workflow_routes import create_workflow_router
+from .synthetic_routes import create_synthetic_router
 from .output_codec import (
     render_operation_result,
     render_pipeline_result,
@@ -304,4 +305,5 @@ def create_router(prefix: str) -> APIRouter:
     router.include_router(create_label_router("", get_services))
     router.include_router(create_workflow_router(prefix="", get_services=get_services))
     router.include_router(create_evaluation_router(prefix="", get_services=get_services))
+    router.include_router(create_synthetic_router(prefix="", get_services=get_services))
     return router

@@ -1,6 +1,5 @@
 from .dataset_service import TestDatasetService
 from .engine import EvaluationEngine
-from .jobs import EvaluationJobManager
 from .errors import *
 from .schemas import *
 from .service import EvaluationService

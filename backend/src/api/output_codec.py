@@ -489,3 +489,62 @@ def _pipeline_status_code(result: PipelineExecutionResult) -> int:
         }.get(cause.get("code"), 400)
 
     return 400
+
+
+def render_synthetic_result(
+    *,
+    result,
+    response_format: ResponseFormat,
+    settings: ApiSettings,
+):
+    """Render SyntheticGenerationResult using the API's existing JSON/ZIP artifact contract."""
+    artifacts: list[EncodedArtifact] = []
+    candidates_payload: list[dict[str, Any]] = []
+
+    for candidate in result.candidates:
+        index = candidate.metadata.index
+        encoded_images: dict[str, Any] = {}
+        for output_name, image in {
+            "image": candidate.image,
+            "mask": candidate.mask,
+            "difference": candidate.difference,
+        }.items():
+            artifact = _encode_image(
+                image=image,
+                path_prefix=f"candidates/{index:02d}",
+                output_name=output_name,
+            )
+            artifacts.append(artifact)
+            metadata = dict(artifact.metadata)
+            if response_format == ResponseFormat.JSON:
+                metadata.update(
+                    {
+                        "encoding": "base64",
+                        "data": base64.b64encode(artifact.content).decode("ascii"),
+                    }
+                )
+            else:
+                metadata["file"] = artifact.path
+            encoded_images[output_name] = metadata
+
+        candidates_payload.append(
+            {
+                "index": index,
+                "seed": candidate.metadata.seed,
+                "metadata": candidate.metadata.model_dump(mode="json"),
+                "images": encoded_images,
+            }
+        )
+
+    payload = {
+        "success": True,
+        "request": result.request_metadata,
+        "candidates": candidates_payload,
+    }
+    return _render_success_payload(
+        payload=payload,
+        artifacts=artifacts,
+        response_format=response_format,
+        settings=settings,
+        download_name="synthetic_ng_result.zip",
+    )
