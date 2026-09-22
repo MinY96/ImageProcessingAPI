@@ -238,9 +238,15 @@ export function StudioCanvas({
   const edges = useMemo(() => record.kind === 'linear' ? linearEdges(record) : graphEdges(record), [record]);
   const selectedId = selection.type === 'node' ? selection.id : selection.type === 'input' ? `__input__${selection.name}` : selection.type === 'output' ? `__output__${selection.name}` : '';
   const visibleNodes = nodes.map((node) => ({ ...node, selected: node.id === selectedId }));
+  const workNodeCount = record.kind === 'linear' ? (record.pipeline?.steps.length ?? 0) : (record.graph?.nodes.length ?? 0);
+  const inputCount = record.kind === 'linear' ? (record.pipeline?.inputs.length ?? 0) : (record.graph?.inputs.length ?? 0);
+  const outputCount = record.kind === 'linear' ? Object.keys(record.pipeline?.outputs ?? {}).length : Object.keys(record.graph?.outputs ?? {}).length;
 
   return <div className="react-flow-wrap">
+    <div className="canvas-status-chip">{inputCount} input · {workNodeCount} {record.kind === 'linear' ? 'step' : 'node'} · {outputCount} output</div>
+    {workNodeCount === 0 && <div className="canvas-empty-hint"><strong>Recipe Canvas is ready</strong>좌측 Node Library에서 Operation을 + 버튼 또는 더블클릭으로 추가하세요.<br/>Input node는 이미 생성되어 있으며 Node 추가 후 연결할 수 있습니다.</div>}
     <ReactFlow
+      key={`${record.name}:${record.kind}`}
       nodes={visibleNodes}
       edges={edges}
       nodeTypes={nodeTypes}

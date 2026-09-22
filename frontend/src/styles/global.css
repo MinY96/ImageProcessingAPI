@@ -21,7 +21,7 @@ button { color: inherit; }
 .nav-icon { width: 18px; text-align: center; color: var(--text-3); }
 .nav-link.active .nav-icon { color: #79a7ff; }
 
-.main-shell { min-width: 0; display: grid; grid-template-rows: var(--header-height) 1fr; }
+.main-shell { min-width: 0; min-height: 0; height: 100%; overflow: hidden; display: grid; grid-template-rows: var(--header-height) minmax(0, 1fr); }
 .app-header { background: var(--header); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; justify-content: space-between; }
 .breadcrumb { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-3); }
 .breadcrumb strong { color: var(--text-2); font-weight: 600; }
@@ -29,7 +29,7 @@ button { color: inherit; }
 .connection { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); border-right: 1px solid var(--border); padding-right: 12px; }
 .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px rgba(77,183,130,.08); }
 
-.page { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.page { min-width: 0; min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); }
 .page-toolbar { min-height: var(--toolbar-height); border-bottom: 1px solid var(--border); background: #11161d; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
 .page-title { font-size: 14px; font-weight: 650; margin-right: 8px; }
 .page-subtitle { font-size: 11px; color: var(--text-3); margin-right: auto; }
@@ -45,12 +45,12 @@ button { color: inherit; }
 .btn:disabled { opacity: .42; cursor: not-allowed; }
 .icon-btn { width: 30px; height: 30px; border: 1px solid var(--border); background: #151b22; border-radius: 6px; color: var(--text-2); cursor: pointer; display: grid; place-items: center; }
 
-.panel { border: 1px solid var(--border); background: var(--panel); border-radius: var(--radius-md); min-width: 0; min-height: 0; overflow: hidden; }
+.panel { border: 1px solid var(--border); background: var(--panel); border-radius: var(--radius-md); min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .panel-header { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); background: #171d25; }
 .panel-title { font-size: 11px; font-weight: 650; color: #d5dbe3; }
 .panel-subtitle { font-size: 10px; color: var(--text-3); }
 .panel-actions { margin-left: auto; display: flex; gap: 5px; }
-.panel-body { min-height: 0; padding: 10px; }
+.panel-body { flex: 1 1 auto; min-height: 0; padding: 10px; overflow: auto; }
 .panel-body.flush { padding: 0; }
 
 .input, .select, .textarea { width: 100%; background: #11171e; color: var(--text); border: 1px solid var(--border); border-radius: 6px; outline: none; }
@@ -219,6 +219,9 @@ tr.selected td { background: #17243a; }
 
 /* Recipe Studio live graph */
 .react-flow-wrap { height:100%; width:100%; background:#0f141a; }
+.canvas-status-chip { position:absolute; top:8px; left:8px; z-index:5; padding:4px 7px; border:1px solid #313d49; border-radius:5px; background:rgba(17,23,30,.88); color:#7f8d9d; font-size:8px; pointer-events:none; }
+.canvas-empty-hint { position:absolute; left:50%; top:50%; z-index:4; transform:translate(-50%,-50%); width:min(360px,70%); padding:16px 18px; border:1px dashed #354354; border-radius:8px; background:rgba(15,20,26,.86); color:#8391a1; text-align:center; font-size:10px; line-height:1.65; pointer-events:none; }
+.canvas-empty-hint strong { display:block; margin-bottom:4px; color:#c5d0dc; font-size:11px; }
 .react-flow__edge-path { stroke:#53667d; stroke-width:1.3; }
 .react-flow__controls { background:#151c24; border:1px solid var(--border); box-shadow:none; }
 .react-flow__controls-button { background:#151c24; color:#aebaca; border-bottom-color:var(--border); }
@@ -282,17 +285,20 @@ tr.selected td { background: #17243a; }
 /* ------------------------------------------------------------
    Recipe Studio editor v2
 ------------------------------------------------------------ */
-.recipe-page-content { overflow:hidden; }
-.recipe-layout.enhanced { grid-template-columns: 270px minmax(560px,1fr) 320px; grid-template-rows:minmax(0,1fr) 225px; }
+.recipe-page-content { overflow:auto; }
+.recipe-layout.enhanced { grid-template-columns: 270px minmax(560px,1fr) 320px; grid-template-rows:minmax(420px,1fr) 225px; min-height: 690px; }
 .recipe-toolbar .badge { flex-shrink:0; }
 .recipe-list-controls { padding:8px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+.recipe-left > .panel > .panel-body.flush { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.recipe-layout.enhanced > .panel > .panel-body.flush { min-height:0; overflow:hidden; }
+.recipe-layout.enhanced > .panel:nth-child(2) > .panel-body.flush { position:relative; }
 .compact-filters { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
 .compact-filters .select { height:27px; font-size:9px; }
-.recipe-list-scroll { height:calc(100% - 94px); overflow:auto; }
+.recipe-list-scroll { flex:1 1 auto; min-height:0; overflow:auto; }
 .recipe-list-text { min-width:0; text-align:left; flex:1; }
 .recipe-kind-icon { width:15px; color:#7693b7; flex-shrink:0; }
 .library-search { padding:7px 8px; border-bottom:1px solid var(--border); }
-.library-list { height:calc(100% - 76px); overflow:auto; }
+.library-list { flex:1 1 auto; min-height:0; overflow:auto; }
 .library-row { min-height:43px; padding-right:5px; }
 .library-symbol { width:16px; color:#718aa8; font-size:12px; flex-shrink:0; }
 .library-symbol.feature { color:#89a7d0; }
@@ -371,6 +377,10 @@ tr.selected td { background: #17243a; }
 .run-options { display:flex; gap:18px; margin-top:12px; font-size:9px; color:var(--text-2); }
 .run-options label { display:flex; align-items:center; gap:6px; }
 
+
+@media (max-height: 820px) {
+  .recipe-layout.enhanced { min-height: 660px; grid-template-rows:minmax(390px,1fr) 220px; }
+}
 @media (max-width: 1500px) {
   .recipe-layout.enhanced { grid-template-columns:245px minmax(500px,1fr) 292px; }
   .studio-flow-node { width:175px; min-width:175px; }

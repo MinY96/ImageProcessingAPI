@@ -192,3 +192,24 @@ npm install
 npm run build
 npm run dev
 ```
+
+## v2.1 layout / canvas fix
+
+Recipe Studio v2 초기본에서 일부 viewport에서 발생하던 레이아웃 문제를 수정했다.
+
+- 공통 `Panel`을 flex column 구조로 변경해 `panel-body`가 남은 높이를 정확히 전달하도록 수정
+- React Flow Canvas가 실제 panel 높이를 100% 사용하도록 수정
+- Recipe 전환 시 React Flow를 recipe 기준으로 재초기화하여 `fitView`가 정상 적용되도록 보강
+- 빈 Draft에도 Canvas 안내와 input/node/output count 표시
+- Recipes 목록을 독립 스크롤 영역으로 변경
+- Node Library 목록을 독립 스크롤 영역으로 변경
+- Inspector / Preview 영역의 overflow 처리 통일
+- Recipe Studio 전체 content에 vertical scroll fallback 추가
+- 작은 높이의 viewport에서는 최소 editor 높이를 유지하고 페이지 스크롤로 하단 Preview 접근 가능
+
+Frontend syntax verification:
+
+```text
+32 TS/TSX files
+Syntax transpile OK
+```
