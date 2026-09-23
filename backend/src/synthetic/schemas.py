@@ -126,6 +126,13 @@ class DiffusionModelStatus(BaseSchema):
     notes: str | None = None
 
 
+class DiffusionPromptPreset(BaseSchema):
+    key: str
+    display_name: str
+    prompt: str
+    negative_prompt: str
+
+
 class SyntheticQualityMetrics(BaseSchema):
     changed_area_ratio: float = Field(ge=0.0, le=1.0)
     outside_mask_mean_abs_diff: float = Field(ge=0.0)

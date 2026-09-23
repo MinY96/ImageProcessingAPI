@@ -14,7 +14,13 @@ from src.synthetic import (
     SyntheticModelUnavailableError,
     SyntheticValidationError,
 )
-from src.synthetic.schemas import SyntheticAssetCreateRequest, SyntheticAssetSummary, SyntheticMethodInfo, DiffusionModelStatus
+from src.synthetic.schemas import (
+    DiffusionModelStatus,
+    DiffusionPromptPreset,
+    SyntheticAssetCreateRequest,
+    SyntheticAssetSummary,
+    SyntheticMethodInfo,
+)
 
 from .errors import ApiRequestError
 from .input_codec import decode_upload_image, parse_form_payload
@@ -64,6 +70,13 @@ def create_synthetic_router(
     @router.get("/synthetic/diffusion/models", response_model=list[DiffusionModelStatus])
     def diffusion_models(services: Annotated[ApiServices, Depends(get_services)]):
         return services.synthetic_service.diffusion_status()
+
+    @router.get(
+        "/synthetic/diffusion/prompt-presets",
+        response_model=list[DiffusionPromptPreset],
+    )
+    def diffusion_prompt_presets(services: Annotated[ApiServices, Depends(get_services)]):
+        return services.synthetic_service.diffusion_prompt_presets()
 
     @router.post("/synthetic/diffusion/unload", status_code=204)
     def unload_diffusion(

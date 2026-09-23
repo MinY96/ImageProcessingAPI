@@ -9,7 +9,7 @@ import numpy as np
 from src.schemas import ImageData
 
 from .common import difference_image, image_data_bgr, image_data_mask, to_bgr, to_gray_mask
-from .diffusion import DiffusionManager
+from .diffusion import DiffusionManager, list_prompt_presets
 from .errors import SyntheticValidationError
 from .generators import (
     AlphaBlendGenerator,
@@ -24,6 +24,7 @@ from .masks import resolve_target_mask
 from .models import SyntheticCandidate, SyntheticGenerationResult
 from .schemas import (
     DiffusionModelStatus,
+    DiffusionPromptPreset,
     SyntheticAssetCreateRequest,
     SyntheticAssetSummary,
     SyntheticCandidateMetadata,
@@ -71,8 +72,18 @@ _METHOD_INFO = [
     SyntheticMethodInfo(
         method=SyntheticMethod.DIFFUSION_INPAINT,
         display_name="Diffusion Inpainting",
-        description="Generate a localized defect inside a mask using a local SDXL or FLUX Fill provider.",
-        optional_dependencies=["diffusers", "transformers", "accelerate", "safetensors"],
+        description=(
+            "Generate a localized defect inside a mask using SDXL, FLUX Fill, or "
+            "OpenVINO Stable Diffusion 1.5 Inpainting."
+        ),
+        optional_dependencies=[
+            "diffusers",
+            "transformers",
+            "accelerate",
+            "safetensors",
+            "openvino",
+            "optimum-intel",
+        ],
     ),
 ]
 
@@ -102,6 +113,17 @@ class SyntheticService:
 
     def diffusion_status(self) -> list[DiffusionModelStatus]:
         return self._diffusion_manager.statuses()
+
+    def diffusion_prompt_presets(self) -> list[DiffusionPromptPreset]:
+        return [
+            DiffusionPromptPreset(
+                key=item.key,
+                display_name=item.display_name,
+                prompt=item.prompt,
+                negative_prompt=item.negative_prompt,
+            )
+            for item in list_prompt_presets()
+        ]
 
     def unload_diffusion(self, model: str | None = None) -> None:
         self._diffusion_manager.unload(model)

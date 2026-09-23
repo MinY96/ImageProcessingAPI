@@ -12,12 +12,11 @@ class ApiSettings(BaseSchema):
     label_store_dir: Path = Path(".image_processing_data/labels")
     test_dataset_store_dir: Path = Path(".image_processing_data/test_datasets")
     evaluation_store_dir: Path = Path(".image_processing_data/evaluations")
-    evaluation_checkpoint_interval: int = Field(default=50, ge=1, le=10_000)
-    evaluation_worker_count: int = Field(default=1, ge=1, le=4)
     synthetic_asset_store_dir: Path = Path(".image_processing_data/synthetic/assets")
     synthetic_diffusion_cache_dir: Path = Path(".image_processing_data/models/diffusion")
     synthetic_diffusion_local_files_only: bool = True
     synthetic_diffusion_device: str = Field(default="cuda", min_length=1, max_length=64)
+    synthetic_openvino_device: str = Field(default="AUTO", min_length=1, max_length=64)
     max_synthetic_candidates: int = Field(default=16, ge=1, le=64)
 
     max_test_dataset_images: int = Field(default=100_000, ge=1, le=1_000_000)

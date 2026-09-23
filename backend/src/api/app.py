@@ -12,7 +12,6 @@ from src.analysis import ImageAnalyzer
 from src.labeling import LabelService, LabelStore
 from src.evaluation import (
     EvaluationEngine,
-    EvaluationJobManager,
     EvaluationRunStore,
     EvaluationService,
     TestDatasetService,
@@ -106,21 +105,18 @@ def create_app(
         workflow_catalog=workflow_catalog,
         max_image_pixels=resolved_settings.max_image_pixels,
     )
-    evaluation_store = EvaluationRunStore(resolved_settings.evaluation_store_dir)
-    evaluation_job_manager = EvaluationJobManager(
+    evaluation_service = EvaluationService(
         dataset_service=test_dataset_service,
         engine=evaluation_engine,
-        store=evaluation_store,
-        checkpoint_interval=resolved_settings.evaluation_checkpoint_interval,
-        worker_count=resolved_settings.evaluation_worker_count,
+        store=EvaluationRunStore(resolved_settings.evaluation_store_dir),
     )
-    evaluation_service = EvaluationService(evaluation_job_manager)
     synthetic_service = SyntheticService(
         asset_store=SyntheticAssetStore(resolved_settings.synthetic_asset_store_dir),
         diffusion_manager=DiffusionManager(
             cache_dir=resolved_settings.synthetic_diffusion_cache_dir,
             local_files_only=resolved_settings.synthetic_diffusion_local_files_only,
             device=resolved_settings.synthetic_diffusion_device,
+            openvino_device=resolved_settings.synthetic_openvino_device,
         ),
         max_candidates=resolved_settings.max_synthetic_candidates,
     )
@@ -146,16 +142,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.services = services
-        evaluation_job_manager.start()
-        try:
-            yield
-        finally:
-            evaluation_job_manager.shutdown()
-            del app.state.services
+        yield
+        del app.state.services
 
     app = FastAPI(
         title="Image Processing API",
-        version="0.6.0",
+        version="0.7.0",
         lifespan=lifespan,
     )
 
