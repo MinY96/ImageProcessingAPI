@@ -1,7 +1,11 @@
-# Optional local diffusion stack for Synthetic NG Generator.
-# Install after requirements.txt so the project keeps a lightweight OpenCV-only mode.
-diffusers>=0.40,<0.50
-transformers>=4.51,<6
+# Optional local NVIDIA/PyTorch diffusion stack for Synthetic NG Generator.
+# Install after requirements.txt.
+#
+# Pinned to diffusers 0.39.0 so this file can coexist in the same venv with
+# requirements-openvino-diffusion.txt / optimum-intel 2.2.0.
+diffusers==0.39.0
+huggingface-hub>=0.34,<1.22
+transformers>=4.51,<5.6
 accelerate>=1.5,<2
 safetensors>=0.5,<1
 sentencepiece>=0.2,<1

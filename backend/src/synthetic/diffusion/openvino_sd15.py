@@ -79,7 +79,7 @@ class OpenVINOSD15InpaintProvider:
             except (ImportError, AttributeError) as exc:
                 raise SyntheticDependencyError(
                     "OpenVINO SD1.5 inpainting requires OpenVINO and Optimum Intel. "
-                    "Install with: pip install --upgrade --upgrade-strategy eager \"optimum-intel[openvino]\""
+                    "Install with: python -m pip install -r requirements-openvino-diffusion.txt"
                 ) from exc
 
     @staticmethod
@@ -134,7 +134,7 @@ class OpenVINOSD15InpaintProvider:
         if not self.dependency_available():
             raise SyntheticDependencyError(
                 "OpenVINO SD1.5 inpainting dependencies are unavailable. Install with: "
-                "pip install --upgrade --upgrade-strategy eager \"optimum-intel[openvino]\""
+                "python -m pip install -r requirements-openvino-diffusion.txt"
             )
 
         PipelineClass = self._pipeline_class()

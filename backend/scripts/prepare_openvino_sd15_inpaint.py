@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Compile the exported model once after export to verify the selected OpenVINO device.",
     )
+    parser.add_argument(
+        "--force-export",
+        action="store_true",
+        help="Re-export even when a prepared OpenVINO model already exists.",
+    )
     return parser.parse_args()
 
 
@@ -53,6 +58,20 @@ def export_dir(output_root: Path, model_id: str, input_size: int) -> Path:
     return output_root / "exported" / f"{safe_name}_{input_size}x{input_size}"
 
 
+def looks_exported(path: Path) -> bool:
+    return (path / "model_index.json").is_file() and any(path.rglob("openvino_model.xml"))
+
+
+def reshape_if_supported(pipe, input_size: int) -> None:
+    if hasattr(pipe, "reshape"):
+        pipe.reshape(
+            batch_size=1,
+            height=input_size,
+            width=input_size,
+            num_images_per_prompt=1,
+        )
+
+
 def main() -> None:
     args = parse_args()
     if args.input_size < 64 or args.input_size > 2048 or args.input_size % 8 != 0:
@@ -60,28 +79,32 @@ def main() -> None:
 
     PipelineClass = pipeline_class()
     target = export_dir(Path(args.output_root), args.model_id, args.input_size)
-    target.mkdir(parents=True, exist_ok=True)
 
     print(f"Source model : {args.model_id}")
     print(f"Output       : {target}")
     print(f"Input size   : {args.input_size}x{args.input_size}")
 
-    pipe = PipelineClass.from_pretrained(
-        args.model_id,
-        export=True,
-        compile=False,
-        device=args.device,
-        local_files_only=args.local_files_only,
-    )
-    if hasattr(pipe, "reshape"):
-        pipe.reshape(
-            batch_size=1,
-            height=args.input_size,
-            width=args.input_size,
-            num_images_per_prompt=1,
+    if looks_exported(target) and not args.force_export:
+        print("Prepared OpenVINO model already exists; loading local export.")
+        pipe = PipelineClass.from_pretrained(
+            str(target),
+            device=args.device,
+            compile=False,
+            local_files_only=True,
         )
-    pipe.save_pretrained(str(target))
-    print("Saved OpenVINO model.")
+        reshape_if_supported(pipe, args.input_size)
+    else:
+        target.mkdir(parents=True, exist_ok=True)
+        pipe = PipelineClass.from_pretrained(
+            args.model_id,
+            export=True,
+            compile=False,
+            device=args.device,
+            local_files_only=args.local_files_only,
+        )
+        reshape_if_supported(pipe, args.input_size)
+        pipe.save_pretrained(str(target))
+        print("Saved OpenVINO model.")
 
     if args.compile_test:
         if hasattr(pipe, "compile"):

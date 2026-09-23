@@ -13,6 +13,39 @@ _DATASET_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 _IMAGE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 
 
+class EvaluationStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    CANCEL_REQUESTED = "cancel_requested"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class EvaluationProgress(BaseSchema):
+    total: int = Field(ge=0)
+    processed: int = Field(ge=0)
+    percent: float = Field(ge=0.0, le=100.0)
+
+    @model_validator(mode="after")
+    def validate_processed(self) -> "EvaluationProgress":
+        if self.processed > self.total:
+            raise ValueError("processed cannot exceed total")
+        return self
+
+
+class EvaluationFailureInfo(BaseSchema):
+    code: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1)
+
+
+class EvaluationJobAccepted(BaseSchema):
+    evaluation_id: str
+    status: EvaluationStatus
+    progress: EvaluationProgress
+    created_at: datetime
+
+
 class GroundTruthLabel(StrEnum):
     OK = "OK"
     NG = "NG"
@@ -22,15 +55,6 @@ class EvaluationPrediction(StrEnum):
     OK = "OK"
     NG = "NG"
     ERROR = "ERROR"
-
-
-class EvaluationStatus(StrEnum):
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCEL_REQUESTED = "cancel_requested"
-    CANCELLED = "cancelled"
 
 
 class TestDatasetImage(BaseSchema):
@@ -278,73 +302,33 @@ class DatasetSnapshot(BaseSchema):
     image_count: int = Field(ge=0)
 
 
-class EvaluationProgress(BaseSchema):
-    total: int = Field(default=0, ge=0)
-    processed: int = Field(default=0, ge=0)
-    percent: float = Field(default=0.0, ge=0, le=100)
-
-    @model_validator(mode="after")
-    def validate_processed(self) -> "EvaluationProgress":
-        if self.processed > self.total:
-            raise ValueError("processed cannot exceed total")
-        return self
-
-
-class EvaluationFailureInfo(BaseSchema):
-    code: str = Field(min_length=1, max_length=128)
-    message: str = Field(min_length=1)
-
-
 class EvaluationRun(BaseSchema):
     evaluation_id: str
     status: EvaluationStatus = EvaluationStatus.COMPLETED
-    progress: EvaluationProgress = Field(default_factory=EvaluationProgress)
+    progress: EvaluationProgress | None = None
     dataset: DatasetSnapshot
     recipe: RecipeSnapshot
     request: EvaluationRequest
     summary: EvaluationSummary | None = None
     results: list[EvaluationItemResult] = Field(default_factory=list)
-    failure: EvaluationFailureInfo | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
-
-    @model_validator(mode="after")
-    def normalize_legacy_completed_run(self) -> "EvaluationRun":
-        # EvaluationRun files created before the job-queue migration did not
-        # persist status/progress. Keep them readable as completed runs.
-        if (
-            self.status == EvaluationStatus.COMPLETED
-            and self.progress.total == 0
-            and self.summary is not None
-        ):
-            total = self.summary.labeled_images
-            self.progress = EvaluationProgress(
-                total=total,
-                processed=total,
-                percent=100.0 if total else 100.0,
-            )
-        return self
+    failure: EvaluationFailureInfo | None = None
+    cancelled: bool = False
 
 
 class EvaluationRunSummary(BaseSchema):
     evaluation_id: str
-    status: EvaluationStatus
-    progress: EvaluationProgress
+    status: EvaluationStatus = EvaluationStatus.COMPLETED
+    progress: EvaluationProgress | None = None
     dataset: DatasetSnapshot
     recipe: RecipeSnapshot
     summary: EvaluationSummary | None = None
-    failure: EvaluationFailureInfo | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
-
-
-class EvaluationJobAccepted(BaseSchema):
-    evaluation_id: str
-    status: EvaluationStatus
-    progress: EvaluationProgress
-    created_at: datetime
+    failure: EvaluationFailureInfo | None = None
 
 
 class EvaluationResultPage(BaseSchema):

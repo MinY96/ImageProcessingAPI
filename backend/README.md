@@ -469,17 +469,17 @@ bbox, polygon, point, polyline은 저장되지 않습니다. 자세한 요청/�
 python -m pytest -q
 ```
 
-현재 168개 테스트는 스키마, 개별/교차 파라미터, 입력/출력 계약, Registry,
+현재 전체 테스트는 스키마, 개별/교차 파라미터, 입력/출력 계약, Registry,
 Pipeline 사전 검증, 순차·분기형 참조, 실패 중단, 중간 결과 관리, Graph DAG cycle/typed-port 검증,
 Binary 다중 분기/ROI fusion/ROI recompose/SubRecipe 실행, 실제 OpenCV 통합 실행, HTTP 조회·실행,
 multipart 이미지 업로드, JSON/ZIP 출력, Recipe 영속화/복제/
 revision 충돌, Label/annotation CRUD·좌표 검증·영속화와 오류 상태 코드뿐 아니라
 Feature2D, homography, K-Means, kNN/SVM 및 Unicode 이미지 I/O도 확인합니다.
 
-## 다음 단계
+## Evaluation Job Queue 기반 코드
 
-작업 상태 저장, 비동기 실행과 결과 조회가 필요한 경우 job queue 계층을
-추가할 수 있습니다.
+Evaluation Job Queue 관리 코드와 관련 스키마/테스트가 포함되어 있으며, 현재 동기 Evaluation API와의
+호환성을 유지합니다. 향후 프론트에서 비동기 실행 API를 연결할 때 해당 manager를 사용할 수 있습니다.
 
 ### 9. Synthetic NG Generator
 
@@ -493,10 +493,9 @@ Feature2D, homography, K-Means, kNN/SVM 및 Unicode 이미지 I/O도 확인합�
 - 후보별 deterministic seed 및 batch candidate 생성
 - 원본 / Synthetic / defect mask / difference 반환
 - mask 외부 픽셀 변화량 기반 background-preservation 품질 지표
-- 선택 의존성 기반 로컬 SDXL Inpainting / FLUX Fill provider
+- 선택 의존성 기반 로컬 SDXL Inpainting / FLUX Fill / OpenVINO SD1.5 Inpainting provider
 - Diffusion 결과의 mask 외부 영역을 원본으로 강제 복원
 - JSON(base64) / ZIP 출력 지원
 
 상세 API와 Diffusion 설정은 [`docs/synthetic_ng_api.md`](docs/synthetic_ng_api.md)를 참고하세요.
-Diffusion 기능만 추가로 사용할 때는 `requirements-diffusion.txt`를 설치합니다.
-Intel CPU/iGPU용 OpenVINO SD1.5 Inpainting은 `requirements-openvino-diffusion.txt`와 `scripts/prepare_openvino_sd15_inpaint.py`를 사용합니다.
+NVIDIA Diffusion은 `requirements-diffusion.txt`, Intel CPU/iGPU용 OpenVINO SD1.5는 `requirements-openvino-diffusion.txt`를 설치합니다.

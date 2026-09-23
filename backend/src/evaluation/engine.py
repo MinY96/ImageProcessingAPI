@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from statistics import mean, median, pstdev
-from typing import Any, Callable
+from typing import Any
+from uuid import uuid4
 
 from src.media_io import read_image
 from src.pipeline import PipelineCatalog, PipelineExecutor
@@ -18,7 +20,10 @@ from .schemas import (
     EvaluationErrorInfo,
     EvaluationItemResult,
     EvaluationPrediction,
+    EvaluationProgress,
     EvaluationRequest,
+    EvaluationRun,
+    EvaluationStatus,
     EvaluationSummary,
     GroundTruthLabel,
     LatencySummary,
@@ -28,8 +33,20 @@ from .schemas import (
 )
 
 
-ProgressCallback = Callable[[int, int, list[EvaluationItemResult]], None]
-CancelCallback = Callable[[], bool]
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _safe_div(numerator: float, denominator: float) -> float | None:
+    return numerator / denominator if denominator else None
+
+
+def _percentile_nearest(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, math.ceil(q * len(ordered)) - 1))
+    return float(ordered[index])
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,19 +60,7 @@ class EvaluationPreparation:
 class EvaluationExecutionResult:
     summary: EvaluationSummary
     results: list[EvaluationItemResult]
-    cancelled: bool
-
-
-def _safe_div(numerator: float, denominator: float) -> float | None:
-    return numerator / denominator if denominator else None
-
-
-def _percentile_nearest(values: list[float], q: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    index = max(0, min(len(ordered) - 1, math.ceil(q * len(ordered)) - 1))
-    return float(ordered[index])
+    cancelled: bool = False
 
 
 class EvaluationEngine:
@@ -76,7 +81,11 @@ class EvaluationEngine:
         self._workflow_catalog = workflow_catalog
         self._max_image_pixels = max_image_pixels
 
-    def prepare(self, dataset: TestDatasetRecord, request: EvaluationRequest) -> EvaluationPreparation:
+    def prepare(
+        self,
+        dataset: TestDatasetRecord,
+        request: EvaluationRequest,
+    ) -> EvaluationPreparation:
         record = self._recipe_service.get(request.recipe_name)
         artifact = record.pipeline if record.kind == RecipeKind.LINEAR else record.graph
         assert artifact is not None
@@ -114,24 +123,31 @@ class EvaluationEngine:
         request: EvaluationRequest,
         *,
         expected_recipe: RecipeSnapshot | None = None,
-        progress_callback: ProgressCallback | None = None,
-        should_cancel: CancelCallback | None = None,
-    ) -> EvaluationExecutionResult:
+        progress_callback=None,
+        should_cancel=None,
+    ) -> EvaluationRun:
+        started_at = _utc_now()
         preparation = self.prepare(dataset, request)
         if expected_recipe is not None and preparation.recipe != expected_recipe:
             raise EvaluationValidationError(
                 "recipe changed after evaluation was queued; submit a new evaluation "
-                f"(queued revision={expected_recipe.revision}, current revision={preparation.recipe.revision})"
+                f"(queued revision={expected_recipe.revision}, "
+                f"current revision={preparation.recipe.revision})"
             )
 
+        record = self._recipe_service.get(request.recipe_name)
         labeled_images = [item for item in dataset.images if item.ground_truth is not None]
+
         shared_images: dict[str, Any] = {}
         for input_name, path in request.shared_image_inputs.items():
             shared_images[input_name] = read_image(path, max_pixels=self._max_image_pixels)
 
         results: list[EvaluationItemResult] = []
-        total = len(labeled_images)
         cancelled = False
+
+        def report_progress() -> None:
+            if progress_callback is not None:
+                progress_callback(len(results), len(labeled_images), list(results))
 
         for item in labeled_images:
             if should_cancel is not None and should_cancel():
@@ -145,7 +161,7 @@ class EvaluationEngine:
                 inputs.update(shared_images)
                 inputs[request.image_input_name] = image
                 result = self._execute_recipe(
-                    preparation.recipe.kind,
+                    record.kind,
                     request.recipe_name,
                     inputs,
                     retain_intermediates=request.capture_node_values,
@@ -180,8 +196,8 @@ class EvaluationEngine:
                         prediction = EvaluationPrediction.NG
                     else:
                         raise EvaluationValidationError(
-                            f"decision output must be {request.ok_label!r} or {request.ng_label!r}; "
-                            f"got {raw_prediction!r}"
+                            f"decision output must be {request.ok_label!r} or "
+                            f"{request.ng_label!r}; got {raw_prediction!r}"
                         )
 
                     score = None
@@ -192,9 +208,12 @@ class EvaluationEngine:
                                 score = float(raw_score)
                             except (TypeError, ValueError) as exc:
                                 raise EvaluationValidationError(
-                                    f"score output {request.score_output!r} is not numeric: {raw_score!r}"
+                                    f"score output {request.score_output!r} is not numeric: "
+                                    f"{raw_score!r}"
                                 ) from exc
 
+                    prediction_value = prediction.value
+                    correct = prediction_value == item.ground_truth.value
                     results.append(
                         EvaluationItemResult(
                             image_id=item.image_id,
@@ -203,7 +222,7 @@ class EvaluationEngine:
                             ground_truth=item.ground_truth,
                             prediction=prediction,
                             score=score,
-                            correct=prediction.value == item.ground_truth.value,
+                            correct=correct,
                             duration_ms=result.metadata.duration_ms,
                             feature_values=self._extract_feature_values(result.intermediates),
                         )
@@ -225,12 +244,31 @@ class EvaluationEngine:
                         ),
                     )
                 )
-
-            if progress_callback is not None:
-                progress_callback(len(results), total, results)
+            report_progress()
 
         summary = self.summarize(total_images=len(dataset.images), results=results)
-        return EvaluationExecutionResult(summary=summary, results=results, cancelled=cancelled)
+        finished_at = _utc_now()
+        total = len(labeled_images)
+        processed = len(results)
+        percent = 100.0 if total == 0 else min(100.0, (processed / total) * 100.0)
+        status = EvaluationStatus.CANCELLED if cancelled else EvaluationStatus.COMPLETED
+        if not cancelled:
+            percent = 100.0
+
+        return EvaluationRun(
+            evaluation_id=uuid4().hex,
+            status=status,
+            progress=EvaluationProgress(total=total, processed=processed, percent=percent),
+            dataset=preparation.dataset,
+            recipe=preparation.recipe,
+            request=request,
+            summary=summary,
+            results=results,
+            created_at=started_at,
+            started_at=started_at,
+            finished_at=finished_at,
+            cancelled=cancelled,
+        )
 
     def _validate_recipe(self, record, request: EvaluationRequest) -> None:
         artifact = record.pipeline if record.kind == RecipeKind.LINEAR else record.graph
@@ -259,18 +297,10 @@ class EvaluationEngine:
         if record.kind == RecipeKind.GRAPH:
             assert record.graph is not None
             if not any(isinstance(node, DecisionNodeSpec) for node in record.graph.nodes):
-                raise EvaluationValidationError(
-                    "graph recipe must contain a Decision node for evaluation"
-                )
+                raise EvaluationValidationError("graph recipe must contain a Decision node for evaluation")
 
-    def _execute_recipe(
-        self,
-        kind: str,
-        recipe_name: str,
-        inputs: dict[str, Any],
-        retain_intermediates: bool,
-    ):
-        if kind == RecipeKind.LINEAR.value:
+    def _execute_recipe(self, kind, recipe_name: str, inputs: dict[str, Any], retain_intermediates: bool):
+        if kind == RecipeKind.LINEAR:
             return self._pipeline_executor.execute(
                 pipeline=self._pipeline_catalog.get(recipe_name),
                 inputs=inputs,
@@ -295,28 +325,18 @@ class EvaluationEngine:
     def summarize(
         cls, *, total_images: int, results: list[EvaluationItemResult]
     ) -> EvaluationSummary:
+        return cls._summarize(total_images=total_images, results=results)
+
+    @classmethod
+    def _summarize(
+        cls, *, total_images: int, results: list[EvaluationItemResult]
+    ) -> EvaluationSummary:
         successful = [item for item in results if item.prediction != EvaluationPrediction.ERROR]
         errors = len(results) - len(successful)
-        tp = sum(
-            item.ground_truth == GroundTruthLabel.NG
-            and item.prediction == EvaluationPrediction.NG
-            for item in successful
-        )
-        tn = sum(
-            item.ground_truth == GroundTruthLabel.OK
-            and item.prediction == EvaluationPrediction.OK
-            for item in successful
-        )
-        fp = sum(
-            item.ground_truth == GroundTruthLabel.OK
-            and item.prediction == EvaluationPrediction.NG
-            for item in successful
-        )
-        fn = sum(
-            item.ground_truth == GroundTruthLabel.NG
-            and item.prediction == EvaluationPrediction.OK
-            for item in successful
-        )
+        tp = sum(item.ground_truth == GroundTruthLabel.NG and item.prediction == EvaluationPrediction.NG for item in successful)
+        tn = sum(item.ground_truth == GroundTruthLabel.OK and item.prediction == EvaluationPrediction.OK for item in successful)
+        fp = sum(item.ground_truth == GroundTruthLabel.OK and item.prediction == EvaluationPrediction.NG for item in successful)
+        fn = sum(item.ground_truth == GroundTruthLabel.NG and item.prediction == EvaluationPrediction.OK for item in successful)
         matrix = ConfusionMatrix(tp=tp, tn=tn, fp=fp, fn=fn)
         accuracy = _safe_div(tp + tn, len(successful))
         precision = _safe_div(tp, tp + fp)
@@ -329,10 +349,10 @@ class EvaluationEngine:
         latency = LatencySummary(
             count=len(durations),
             total_ms=float(sum(durations)),
-            mean_ms=float(mean(durations)) if durations else None,
-            median_ms=float(median(durations)) if durations else None,
+            mean_ms=(float(mean(durations)) if durations else None),
+            median_ms=(float(median(durations)) if durations else None),
             p95_ms=_percentile_nearest(durations, 0.95),
-            max_ms=float(max(durations)) if durations else None,
+            max_ms=(float(max(durations)) if durations else None),
         )
         return EvaluationSummary(
             total_images=total_images,
@@ -354,14 +374,8 @@ class EvaluationEngine:
         )
 
     @staticmethod
-    def _score_group(
-        results: list[EvaluationItemResult], label: GroundTruthLabel
-    ) -> ScoreGroupSummary:
-        values = [
-            item.score
-            for item in results
-            if item.ground_truth == label and item.score is not None
-        ]
+    def _score_group(results: list[EvaluationItemResult], label: GroundTruthLabel) -> ScoreGroupSummary:
+        values = [item.score for item in results if item.ground_truth == label and item.score is not None]
         if not values:
             return ScoreGroupSummary(count=0)
         numeric = [float(value) for value in values]

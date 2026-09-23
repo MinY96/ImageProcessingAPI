@@ -147,7 +147,7 @@ def create_app(
 
     app = FastAPI(
         title="Image Processing API",
-        version="0.7.0",
+        version="0.6.0",
         lifespan=lifespan,
     )
 

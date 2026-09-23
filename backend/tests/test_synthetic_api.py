@@ -50,20 +50,16 @@ def test_synthetic_methods_and_diffusion_status(tmp_path: Path):
         keys = {item["model"] for item in models.json()}
         assert {"sdxl_inpaint", "flux_fill", "sd15_openvino_inpaint"} <= keys
 
-        openvino = next(item for item in models.json() if item["model"] == "sd15_openvino_inpaint")
+        openvino = next(
+            item for item in models.json() if item["model"] == "sd15_openvino_inpaint"
+        )
         assert openvino["device"] == "AUTO"
         assert "512x512" in openvino["notes"]
 
         presets = client.get("/api/v1/synthetic/diffusion/prompt-presets")
         assert presets.status_code == 200
         preset_keys = {item["key"] for item in presets.json()}
-        assert {
-            "micro_seepage",
-            "small_pooling",
-            "hairline_tear",
-            "tear_with_seepage",
-            "tear_with_pooling",
-        } <= preset_keys
+        assert {"small_pooling", "tear_with_seepage", "downward_drip"} <= preset_keys
 
 
 def test_procedural_generation_preserves_outside_mask(tmp_path: Path):

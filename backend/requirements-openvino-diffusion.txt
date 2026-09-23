@@ -1,10 +1,13 @@
 # Optional Intel/OpenVINO diffusion stack for Synthetic NG Generator.
-# Current Optimum Intel/OpenVINO stack (2026). Install after requirements.txt.
-# Recommended command:
-#   pip install --upgrade --upgrade-strategy eager "optimum-intel[openvino]"
-optimum-intel[openvino]>=2.2,<3
+# Install AFTER requirements.txt in the same virtual environment.
+#
+# This set is intentionally pinned around Optimum Intel 2.2.x.
+# diffusers 0.40+ currently requires huggingface-hub >=1.23 while
+# optimum-intel 2.2.0 requires huggingface-hub <1.22, so 0.39.0 is used.
+optimum-intel[openvino]==2.2.0
 openvino>=2026.3,<2027
-diffusers>=0.40,<0.50
-transformers>=4.51,<6
+diffusers==0.39.0
+huggingface-hub>=0.34,<1.22
+transformers>=4.51,<5.6
 accelerate>=1.5,<2
 safetensors>=0.5,<1

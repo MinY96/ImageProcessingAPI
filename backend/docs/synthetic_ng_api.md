@@ -12,7 +12,7 @@
 | `alpha_blend` | 투명도 기반 defect 합성 | 예 |
 | `seamless_clone` | OpenCV Poisson seamless clone | 예 |
 | `asset_composite` | 색/노이즈/blur matching 포함 Asset 합성 | 예 |
-| `diffusion_inpaint` | SDXL / FLUX / OpenVINO SD1.5 로컬 inpainting | 아니오 |
+| `diffusion_inpaint` | SDXL/FLUX/OpenVINO SD1.5 로컬 inpainting | 아니오 |
 
 ## 저장 위치
 
@@ -103,11 +103,23 @@ Asset 생성 후 `asset_id`를 합성 요청에 전달하면 됩니다.
 
 ## Diffusion Inpainting
 
-Diffusion은 선택 의존성입니다. 기본 OpenCV 서버는 `diffusers`가 없어도 기동합니다.
+Diffusion은 선택 의존성입니다. 기본 OpenCV 서버는 diffusion 패키지가 없어도 기동합니다.
+
+NVIDIA SDXL/FLUX만 사용할 경우:
 
 ```bash
 pip install -r requirements-diffusion.txt
 ```
+
+Intel CPU/iGPU에서 OpenVINO SD1.5 Inpainting을 사용할 경우:
+
+```bash
+python -m pip install -r requirements-openvino-diffusion.txt
+python scripts/prepare_openvino_sd15_inpaint.py --device CPU --compile-test
+python scripts/prepare_openvino_sd15_inpaint.py --device GPU --compile-test
+```
+
+두 번째 `prepare` 명령은 이미 생성된 OpenVINO IR이 있으면 재-export하지 않고 GPU compile만 검증합니다.
 
 기본 설정은 `synthetic_diffusion_local_files_only=True`입니다. 따라서 사내망/오프라인 환경에서는 모델을 미리 캐시에 준비하거나 `ApiSettings`에서 다운로드 허용 형태로 실행해야 합니다.
 
@@ -115,92 +127,10 @@ pip install -r requirements-diffusion.txt
 
 - `sdxl_inpaint`: `diffusers/stable-diffusion-xl-1.0-inpainting-0.1`
 - `flux_fill`: `black-forest-labs/FLUX.1-Fill-dev` (experimental, CPU offload 기본)
-- `sd15_openvino_inpaint`: `stable-diffusion-v1-5/stable-diffusion-inpainting`를 OpenVINO IR로 변환해 Intel CPU/iGPU에서 실행
+- `sd15_openvino_inpaint`: `stable-diffusion-v1-5/stable-diffusion-inpainting` (512x512 ROI, Intel CPU/iGPU 권장)
 
-### OpenVINO SD1.5 Inpainting
-
-사무용 Intel PC에서 512x512 ROI 단위로 Synthetic NG를 생성하기 위한 provider입니다.
-기본 OpenVINO 장치는 `AUTO`이며 `ApiSettings.synthetic_openvino_device`에서 `CPU`, `GPU`, `GPU.0` 등으로 변경할 수 있습니다.
-
-선택 의존성 설치:
-
-```bash
-pip install -r requirements-openvino-diffusion.txt
-```
-
-또는 최신 Optimum Intel 권장 방식:
-
-```bash
-pip install --upgrade --upgrade-strategy eager "optimum-intel[openvino]"
-```
-
-최초 1회 모델 다운로드 + OpenVINO IR 변환:
-
-```bash
-python scripts/prepare_openvino_sd15_inpaint.py --device CPU --compile-test
-```
-
-Intel GPU 드라이버가 OpenVINO에 정상 노출된다면:
-
-```bash
-python scripts/prepare_openvino_sd15_inpaint.py --device GPU --compile-test
-```
-
-API 서버에서 `synthetic_diffusion_local_files_only=True`를 유지하면, 이후에는 저장된 OpenVINO 모델만 사용하므로 외부 다운로드를 시도하지 않습니다.
-모델은 기본적으로 아래에 저장됩니다.
-
-```text
-.image_processing_data/models/diffusion/
-└── sd15_openvino_inpaint/
-    └── exported/
-        └── stable-diffusion-v1-5__stable-diffusion-inpainting_512x512/
-```
-
-OpenVINO 요청 예시:
-
-```json
-{
-  "method": "diffusion_inpaint",
-  "defect_type": "tear_with_seepage",
-  "count": 1,
-  "seed": 100,
-  "mask": {
-    "type": "ellipse",
-    "center_x": 0.52,
-    "center_y": 0.50,
-    "width_ratio": 0.14,
-    "height_ratio": 0.10,
-    "rotation_deg": 15,
-    "feather_px": 5
-  },
-  "parameters": {
-    "model": "sd15_openvino_inpaint",
-    "prompt_preset": "tear_with_seepage",
-    "device": "AUTO",
-    "input_size": 512,
-    "steps": 20,
-    "guidance_scale": 7.0,
-    "strength": 0.85
-  }
-}
-```
-
-`prompt`를 직접 넘기면 `prompt_preset`보다 우선합니다. `negative_prompt`도 직접 지정할 수 있으며, 생략하면 preset의 공통 negative prompt를 사용합니다.
-
-호스 누수 preset은 다음 10개를 제공합니다.
-
-- `micro_seepage`
-- `small_joint_leak`
-- `small_pooling`
-- `hairline_tear`
-- `tear_with_seepage`
-- `tear_with_pooling`
-- `forming_droplet`
-- `downward_drip`
-- `wet_halo`
-- `small_pressure_leak`
-
-`GET /api/v1/synthetic/diffusion/prompt-presets`로 실제 prompt/negative prompt 전체를 조회할 수 있습니다.
+OpenVINO provider는 `parameters.device`로 `AUTO`, `CPU`, `GPU`, `GPU.0` 등을 지정할 수 있으며,
+기본값은 `ApiSettings.synthetic_openvino_device="AUTO"`입니다.
 
 요청 예시:
 
@@ -227,6 +157,37 @@ OpenVINO 요청 예시:
 ```
 
 Diffusion 출력은 최종 단계에서 원본과 다시 합성합니다. **Mask 외부 픽셀은 원본으로 복원**되므로 생성 모델이 주변 장비나 배경을 임의로 바꾸는 것을 막습니다.
+
+### OpenVINO SD1.5 호스 누수 예시
+
+```json
+{
+  "method": "diffusion_inpaint",
+  "defect_type": "tear_with_seepage",
+  "count": 1,
+  "seed": 100,
+  "mask": {
+    "type": "ellipse",
+    "center_x": 0.52,
+    "center_y": 0.50,
+    "width_ratio": 0.14,
+    "height_ratio": 0.10,
+    "rotation_deg": 15,
+    "feather_px": 5
+  },
+  "parameters": {
+    "model": "sd15_openvino_inpaint",
+    "prompt_preset": "tear_with_seepage",
+    "device": "GPU",
+    "input_size": 512,
+    "steps": 20,
+    "guidance_scale": 7.0,
+    "strength": 0.85
+  }
+}
+```
+
+호스 누수용 preset은 `GET /api/v1/synthetic/diffusion/prompt-presets`에서 조회합니다.
 
 ## 응답
 
