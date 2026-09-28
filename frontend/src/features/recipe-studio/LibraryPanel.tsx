@@ -12,7 +12,20 @@ export type LibrarySelection =
   | null;
 
 function AddButton({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) {
-  return <Button className="library-add-btn" disabled={disabled} onClick={(event) => { event.stopPropagation(); onClick(); }}>＋</Button>;
+  return <Button type="button" className="library-add-btn" disabled={disabled} onClick={onClick}>＋</Button>;
+}
+
+function LibraryRow({ active, symbol, symbolClass = '', title, subtitle, disabled, onSelect, onAdd, onDoubleClick }: {
+  active: boolean; symbol: string; symbolClass?: string; title: string; subtitle: string; disabled: boolean;
+  onSelect: () => void; onAdd: () => void; onDoubleClick: () => void;
+}) {
+  return <div className={`list-item library-row ${active ? 'active' : ''}`}>
+    <button type="button" className="library-select-btn" onClick={onSelect} onDoubleClick={onDoubleClick}>
+      <span className={`library-symbol ${symbolClass}`}>{symbol}</span>
+      <span className="library-text"><strong>{title}</strong><small>{subtitle}</small></span>
+    </button>
+    <AddButton disabled={disabled} onClick={onAdd}/>
+  </div>;
 }
 
 export function LibraryPanel({
@@ -74,61 +87,41 @@ export function LibraryPanel({
     <div className="library-list">
       {(tab === 'Operations' || !graph) && (grouped.length ? grouped.map(([group, items]) => <div key={group}>
         <div className="section-label">▾ {group}</div>
-        {items.map((item) => <button
-          className={`list-item list-button library-row ${selected?.type === 'operation' && selected.name === item.name ? 'active' : ''}`}
-          key={item.name}
-          onClick={() => onSelect({ type: 'operation', name: item.name })}
-          onDoubleClick={() => !readonly && onAddOperation(item)}
-        >
-          <span className="library-symbol">◇</span>
-          <span className="library-text"><strong>{item.display_name}</strong><small>{item.name}</small></span>
-          <AddButton disabled={readonly} onClick={() => onAddOperation(item)}/>
-        </button>)}
+        {items.map((item) => <LibraryRow key={item.name}
+          active={selected?.type === 'operation' && selected.name === item.name}
+          symbol="◇" title={item.display_name} subtitle={item.name} disabled={readonly}
+          onSelect={() => onSelect({ type: 'operation', name: item.name })}
+          onDoubleClick={() => { if (!readonly) onAddOperation(item); }} onAdd={() => onAddOperation(item)}
+        />)}
       </div>) : <EmptyState>Operation이 없습니다.</EmptyState>)}
 
-      {graph && tab === 'Features' && (filteredFeatures.length ? filteredFeatures.map((item) => <button
-        className={`list-item list-button library-row ${selected?.type === 'feature' && selected.name === item.name ? 'active' : ''}`}
-        key={item.name}
-        onClick={() => onSelect({ type: 'feature', name: item.name })}
-        onDoubleClick={() => !readonly && onAddFeature(item)}
-      >
-        <span className="library-symbol feature">ƒ</span>
-        <span className="library-text"><strong>{item.display_name}</strong><small>{item.category} · {item.name}</small></span>
-        <AddButton disabled={readonly} onClick={() => onAddFeature(item)}/>
-      </button>) : <EmptyState>Feature가 없습니다.</EmptyState>)}
+      {graph && tab === 'Features' && (filteredFeatures.length ? filteredFeatures.map((item) => <LibraryRow key={item.name}
+        active={selected?.type === 'feature' && selected.name === item.name}
+        symbol="ƒ" symbolClass="feature" title={item.display_name} subtitle={`${item.category} · ${item.name}`} disabled={readonly}
+        onSelect={() => onSelect({ type: 'feature', name: item.name })}
+        onDoubleClick={() => { if (!readonly) onAddFeature(item); }} onAdd={() => onAddFeature(item)}
+      />) : <EmptyState>Feature가 없습니다.</EmptyState>)}
 
-      {graph && tab === 'Operators' && (filteredOperators.length ? filteredOperators.map((item) => <button
-        className={`list-item list-button library-row ${selected?.type === 'operator' && selected.name === item.name ? 'active' : ''}`}
-        key={item.name}
-        onClick={() => onSelect({ type: 'operator', name: item.name })}
-        onDoubleClick={() => !readonly && onAddOperator(item)}
-      >
-        <span className="library-symbol operator">Σ</span>
-        <span className="library-text"><strong>{item.display_name}</strong><small>{item.name} · {item.min_inputs}..{item.max_inputs ?? 'N'} inputs</small></span>
-        <AddButton disabled={readonly} onClick={() => onAddOperator(item)}/>
-      </button>) : <EmptyState>Scalar Operator가 없습니다.</EmptyState>)}
+      {graph && tab === 'Operators' && (filteredOperators.length ? filteredOperators.map((item) => <LibraryRow key={item.name}
+        active={selected?.type === 'operator' && selected.name === item.name}
+        symbol="Σ" symbolClass="operator" title={item.display_name} subtitle={`${item.name} · ${item.min_inputs}..${item.max_inputs ?? 'N'} inputs`} disabled={readonly}
+        onSelect={() => onSelect({ type: 'operator', name: item.name })}
+        onDoubleClick={() => { if (!readonly) onAddOperator(item); }} onAdd={() => onAddOperator(item)}
+      />) : <EmptyState>Scalar Operator가 없습니다.</EmptyState>)}
 
-      {graph && tab === 'Graph Nodes' && systemNodes.map((item) => <button
-        className={`list-item list-button library-row ${selected?.type === 'system' && selected.name === item.name ? 'active' : ''}`}
-        key={item.name}
-        onClick={() => onSelect({ type: 'system', name: item.name })}
-        onDoubleClick={() => !readonly && onAddSystem(item.name)}
-      >
-        <span className="library-symbol system">▱</span>
-        <span className="library-text"><strong>{item.display}</strong><small>{item.desc}</small></span>
-        <AddButton disabled={readonly} onClick={() => onAddSystem(item.name)}/>
-      </button>)}
+      {graph && tab === 'Graph Nodes' && systemNodes.map((item) => <LibraryRow key={item.name}
+        active={selected?.type === 'system' && selected.name === item.name}
+        symbol="▱" symbolClass="system" title={item.display} subtitle={item.desc} disabled={readonly}
+        onSelect={() => onSelect({ type: 'system', name: item.name })}
+        onDoubleClick={() => { if (!readonly) onAddSystem(item.name); }} onAdd={() => onAddSystem(item.name)}
+      />)}
 
-      {graph && tab === 'SubRecipe' && (filteredRecipes.length ? filteredRecipes.map((item) => <button
-        className={`list-item list-button library-row ${selected?.type === 'subrecipe' && selected.name === item.name ? 'active' : ''}`}
-        key={item.name}
-        onClick={() => onSelect({ type: 'subrecipe', name: item.name })}
-        onDoubleClick={() => !readonly && onAddSubrecipe(item)}
-      >
-        <span className="library-symbol recipe">◆</span>
-        <span className="library-text"><strong>{item.display_name}</strong><small>{item.kind} · {item.name} · v{item.version}</small></span>
-        <AddButton disabled={readonly} onClick={() => onAddSubrecipe(item)}/>
-      </button>) : <EmptyState>사용 가능한 SubRecipe가 없습니다.</EmptyState>)}
+      {graph && tab === 'SubRecipe' && (filteredRecipes.length ? filteredRecipes.map((item) => <LibraryRow key={item.name}
+        active={selected?.type === 'subrecipe' && selected.name === item.name}
+        symbol="◆" symbolClass="recipe" title={item.display_name} subtitle={`${item.kind} · ${item.name} · v${item.version}`} disabled={readonly}
+        onSelect={() => onSelect({ type: 'subrecipe', name: item.name })}
+        onDoubleClick={() => { if (!readonly) onAddSubrecipe(item); }} onAdd={() => onAddSubrecipe(item)}
+      />) : <EmptyState>사용 가능한 SubRecipe가 없습니다.</EmptyState>)}
     </div>
   </Panel>;
 }

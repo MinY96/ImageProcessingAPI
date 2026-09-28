@@ -267,8 +267,17 @@ export function StudioCanvas({
   [record, operations, features, operators, subrecipes, positions]);
   const edges = useMemo(() => record.kind === 'linear' ? linearEdges(record) : graphEdges(record), [record]);
   const selectedId = selection.type === 'node' ? selection.id : selection.type === 'input' ? `__input__${selection.name}` : selection.type === 'output' ? `__output__${selection.name}` : '';
-  const selectedSet = new Set(selectedNodeIds);
-  const visibleNodes: StudioFlowNode[] = nodes.map((node) => ({ ...node, selected: selectedSet.has(node.id) || node.id === selectedId, data: { ...node.data, validationError: validationErrorNodeIds.includes(node.id) } }));
+  // Keep the controlled node list stable. Recreating it on every render makes
+  // React Flow sync it back into its store repeatedly, which can cause a render loop.
+  const visibleNodes: StudioFlowNode[] = useMemo(() => {
+    const selectedSet = new Set(selectedNodeIds);
+    const invalidSet = new Set(validationErrorNodeIds);
+    return nodes.map((node) => ({
+      ...node,
+      selected: selectedSet.has(node.id) || node.id === selectedId,
+      data: { ...node.data, validationError: invalidSet.has(node.id) },
+    }));
+  }, [nodes, selectedNodeIds, selectedId, validationErrorNodeIds]);
   const workNodeCount = record.kind === 'linear' ? (record.pipeline?.steps.length ?? 0) : (record.graph?.nodes.length ?? 0);
   const inputCount = record.kind === 'linear' ? (record.pipeline?.inputs.length ?? 0) : (record.graph?.inputs.length ?? 0);
   const outputCount = record.kind === 'linear' ? Object.keys(record.pipeline?.outputs ?? {}).length : Object.keys(record.graph?.outputs ?? {}).length;

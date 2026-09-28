@@ -368,6 +368,8 @@ tr.selected td { background: #17243a; }
 .library-search { padding:7px 8px; border-bottom:1px solid var(--border); }
 .library-list { flex:1 1 auto; min-height:0; overflow:auto; }
 .library-row { min-height:43px; padding-right:5px; }
+.library-select-btn { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:8px; border:0; padding:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.library-select-btn:hover { color:#e5edf8; }
 .library-symbol { width:16px; color:#718aa8; font-size:12px; flex-shrink:0; }
 .library-symbol.feature { color:#89a7d0; }
 .library-symbol.operator { color:#c0a875; }

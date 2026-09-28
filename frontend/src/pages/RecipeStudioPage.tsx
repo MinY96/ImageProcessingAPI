@@ -95,6 +95,17 @@ export function RecipeStudioPage() {
   const [showNew, setShowNew] = useState(false);
   const [showRun, setShowRun] = useState(false);
 
+  const updateCanvasSelection = (next: RecipeSelection) => setSelection((current) => {
+    if (current.type !== next.type) return next;
+    if (current.type === 'node' && next.type === 'node') return current.id === next.id ? current : next;
+    if (current.type === 'input' && next.type === 'input') return current.name === next.name ? current : next;
+    if (current.type === 'output' && next.type === 'output') return current.name === next.name ? current : next;
+    return current;
+  });
+  const updateSelectedNodes = (ids: string[]) => setSelectedNodeIds((current) =>
+    current.length === ids.length && current.every((id, index) => id === ids[index]) ? current : ids,
+  );
+
   const opMap = useMemo(() => new Map(operations.map((item) => [item.name, item])), [operations]);
   const featureMap = useMemo(() => new Map(features.map((item) => [item.name, item])), [features]);
   const operatorMap = useMemo(() => new Map(operators.map((item) => [item.name, item])), [operators]);
@@ -525,8 +536,8 @@ export function RecipeStudioPage() {
               record={record} operations={opMap} features={featureMap} operators={operatorMap} subrecipes={subrecipes}
               positions={positions} selectedNodeIds={selectedNodeIds} validationErrorNodeIds={invalidNodeIds} focusNodeId={focusNodeId}
               onPositionChange={(id, position) => setPositions((prev) => { const next = new Map(prev); next.set(id, position); return next; })}
-              selection={selection} onSelectionChange={setSelection} onConnect={connect} onDeleteEdge={deleteEdge}
-              onMultiSelect={setSelectedNodeIds} onDeleteNodes={deleteNodeIds}
+              selection={selection} onSelectionChange={updateCanvasSelection} onConnect={connect} onDeleteEdge={deleteEdge}
+              onMultiSelect={updateSelectedNodes} onDeleteNodes={deleteNodeIds}
             /></div>
           </div> : <EmptyState>Recipe를 선택하거나 New Recipe를 생성하세요.</EmptyState>}
         </Panel>
