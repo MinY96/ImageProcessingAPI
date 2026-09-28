@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type {
   FeatureSpec,
@@ -12,6 +12,7 @@ import type {
 } from '../../api';
 import { Button, EmptyState, Field, Panel, Tabs } from '../../components/ui';
 import { SaveImageButton } from '../../components/SaveImageButton';
+import { ImageCanvas } from '../../components/ImageCanvas';
 import type { LibrarySelection } from './LibraryPanel';
 import { LooseParameterEditor, ParameterEditor } from './ParameterEditor';
 import {
@@ -240,6 +241,12 @@ export function InspectorPanel({
             }}>{recipes.filter((item) => item.name !== record.name).map((item) => <option key={item.name} value={item.name}>{item.display_name} · {item.kind}</option>)}</select></Field>
             <Field label="Version"><input className="input" disabled={disabled} value={node.recipe_version ?? ''} onChange={(e) => change((draft) => { draft.graph!.nodes.find((item) => item.id === node.id)!.recipe_version = e.target.value || undefined; })}/></Field>
           </>}
+          {node.node_type === 'comment' && <Field label="Comment"><textarea className="textarea" maxLength={2000} disabled={disabled} value={node.text ?? ''} onChange={(e)=>change((draft)=>{draft.graph!.nodes.find((item)=>item.id===node.id)!.text=e.target.value;})}/></Field>}
+          {node.node_type === 'group' && <>
+            <Field label="Group title"><input className="input" maxLength={120} disabled={disabled} value={node.label ?? ''} onChange={(e)=>change((draft)=>{draft.graph!.nodes.find((item)=>item.id===node.id)!.label=e.target.value;})}/></Field>
+            <div className="inspector-heading">Grouped nodes</div>
+            {(record.graph?.nodes ?? []).filter((item)=>item.node_type!=='group'&&item.node_type!=='comment').map((member)=><label className="group-member-option" key={member.id}><input type="checkbox" disabled={disabled} checked={(node.members ?? []).includes(member.id)} onChange={(e)=>change((draft)=>{const target=draft.graph!.nodes.find((item)=>item.id===node.id)!;const ids=new Set(target.members ?? []);if(e.target.checked){ids.add(member.id);for(const other of draft.graph!.nodes)if(other.node_type==='group'&&other.id!==node.id)other.members=(other.members??[]).filter((id)=>id!==member.id);}else ids.delete(member.id);target.members=[...ids];})}/><span>{member.id}</span></label>)}
+          </>}
           {!disabled && <Button variant="danger" onClick={() => { onChange(removeGraphNode(record, node.id)); onSelectionChange({ type: 'recipe' }); }}>Delete Node</Button>}
         </div>
         <div className="inspector-section"><div className="inspector-heading">Input bindings</div>
@@ -312,76 +319,30 @@ function RoiEditor({ node, disabled, onChange }: { node: GraphNodeSpec; disabled
   const [preview, setPreview] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const [availableWidth, setAvailableWidth] = useState(360);
-  const [drag, setDrag] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const target = pickerRef.current;
-    if (!target) return;
-    const observer = new ResizeObserver((entries) => setAvailableWidth(entries[0]?.contentRect.width ?? 360));
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
   useEffect(() => {
     if (!preview) { setPreviewUrl(''); setSize(null); return; }
     const url = URL.createObjectURL(preview);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [preview]);
-  const normalizedBox = size ? {
-    x: relative ? Number(params.x ?? 0) : Number(params.x ?? 0) / size.width,
-    y: relative ? Number(params.y ?? 0) : Number(params.y ?? 0) / size.height,
-    w: relative ? Number(params.width ?? 0.5) : Number(params.width ?? 100) / size.width,
-    h: relative ? Number(params.height ?? 0.5) : Number(params.height ?? 100) / size.height,
-  } : null;
-  const pointAt = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
-    };
-  };
-  const pointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || !size) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const point = pointAt(event);
-    setDrag({ startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
-  };
-  const pointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!drag) return;
-    const point = pointAt(event);
-    setDrag({ ...drag, currentX: point.x, currentY: point.y });
-  };
-  const pointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!drag || !size) return;
-    const point = pointAt(event);
-    const box = { x: Math.min(drag.startX, point.x), y: Math.min(drag.startY, point.y), w: Math.abs(point.x - drag.startX), h: Math.abs(point.y - drag.startY) };
-    if (box.w < 0.005 || box.h < 0.005) { setDrag(null); return; }
-    const values = relative ? box : {
-      x: Math.round(box.x * size.width), y: Math.round(box.y * size.height),
-      w: Math.max(2, Math.round(box.w * size.width)), h: Math.max(2, Math.round(box.h * size.height)),
-    };
-    onChange({ ...params, coordinate_mode: relative ? 'relative' : 'pixels', x: values.x, y: values.y, width: values.w, height: values.h });
-    setDrag(null);
-  };
-  const currentBox = drag ? {
-    x: Math.min(drag.startX, drag.currentX), y: Math.min(drag.startY, drag.currentY),
-    w: Math.abs(drag.currentX - drag.startX), h: Math.abs(drag.currentY - drag.startY),
-  } : normalizedBox;
-  const previewScale = size ? Math.min(availableWidth / size.width, 280 / size.height) : 1;
+  const selectedRoi = size ? {
+    x: Math.round((relative ? Number(params.x ?? 0) : Number(params.x ?? 0) / size.width) * size.width),
+    y: Math.round((relative ? Number(params.y ?? 0) : Number(params.y ?? 0) / size.height) * size.height),
+    width: Math.max(1, Math.round((relative ? Number(params.width ?? 0.5) : Number(params.width ?? 100) / size.width) * size.width)),
+    height: Math.max(1, Math.round((relative ? Number(params.height ?? 0.5) : Number(params.height ?? 100) / size.height) * size.height)),
+  } : undefined;
   return <div className="parameter-list">
     <Field label="Mode"><select className="select" disabled={disabled} value={String(params.coordinate_mode ?? 'pixels')} onChange={(e) => patch('coordinate_mode', e.target.value)}><option value="pixels">pixels</option><option value="relative">relative</option></select></Field>
     {['x', 'y', 'width', 'height'].map((name) => <Field key={name} label={name}><input className="input" type="number" disabled={disabled} min={0} max={relative ? 1 : undefined} step={relative ? 0.01 : 1} value={String(params[name] ?? (name === 'width' || name === 'height' ? (relative ? 0.5 : 100) : 0))} onChange={(e) => patch(name, Number(e.target.value))}/></Field>)}
     <Field label="Clamp"><label className="switch-row"><input type="checkbox" disabled={disabled} checked={Boolean(params.clamp ?? false)} onChange={(e) => patch('clamp', e.target.checked)}/><span>{Boolean(params.clamp) ? 'On' : 'Off'}</span></label></Field>
-    <div className="roi-picker" ref={pickerRef}>
+    <div className="roi-picker">
       <div className="inspector-heading">Visual ROI Selection</div>
-      <div className="roi-picker-actions"><span>이미지를 불러온 뒤 드래그해 ROI를 지정하세요.</span><SaveImageButton source={previewUrl} fileName={preview?.name ?? 'roi-preview'}/></div>
-      <input className="input" type="file" accept="image/*" disabled={disabled} onChange={(event) => { setPreview(event.target.files?.[0] ?? null); setDrag(null); }}/>
-      {previewUrl ? <div ref={stageRef} className="roi-picker-stage" style={size ? { width: size.width * previewScale, height: size.height * previewScale } : { width: '100%', aspectRatio: '4 / 3' }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => setDrag(null)}>
-        <img src={previewUrl} alt="ROI selection preview" onLoad={(event) => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}/>
-        {currentBox && <div className="roi-picker-overlay" style={{ left: `${currentBox.x * 100}%`, top: `${currentBox.y * 100}%`, width: `${currentBox.w * 100}%`, height: `${currentBox.h * 100}%` }}/>} 
-      </div> : <div className="roi-picker-empty">No preview image loaded</div>}
+      <div className="roi-picker-actions"><span>드래그하여 선택 · 커서 위치의 좌표/픽셀값 표시</span><SaveImageButton source={previewUrl} fileName={preview?.name ?? 'roi-preview'}/></div>
+      <input className="input" type="file" accept="image/*" disabled={disabled} onChange={(event) => setPreview(event.target.files?.[0] ?? null)}/>
+      {previewUrl ? <ImageCanvas src={previewUrl} alt="ROI selection preview" roi={selectedRoi} maxHeight={280} className="roi-picker-stage" onImageSize={setSize} onRoiChange={disabled ? undefined : (roi, dimensions) => {
+        const values = relative ? { x:roi.x/dimensions.width, y:roi.y/dimensions.height, width:roi.width/dimensions.width, height:roi.height/dimensions.height } : roi;
+        onChange({ ...params, coordinate_mode:relative?'relative':'pixels', x:values.x, y:values.y, width:values.width, height:values.height });
+      }}/> : <div className="roi-picker-empty">이미지를 불러오면 ROI를 마우스로 지정할 수 있습니다.</div>}
       {size && <div className="help">Image {size.width} × {size.height} · {relative ? 'relative coordinates' : 'pixel coordinates'}</div>}
     </div>
   </div>;

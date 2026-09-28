@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection, Edge } from '@xyflow/react';
 
 import {
@@ -10,6 +10,7 @@ import {
   workflowApi,
   type ExecutionResponse,
   type FeatureSpec,
+  type GraphNodeSpec,
   type ModelSpec,
   type OperationSpec,
   type RecipeRecord,
@@ -24,9 +25,11 @@ import {
   defaultGraphNode,
   defaultsFromParameters,
   kindsCompatible,
+  cleanupLinearOrder,
   linearSourceOptions,
   nodeInterface,
   pipelineStepInterface,
+  removeLinearStep,
   subrecipeInterfaceFromRecord,
   uniqueId,
   type RecipeSelection,
@@ -47,6 +50,17 @@ function validationDetail(error: unknown): unknown {
   return { message: errorMessage(error) };
 }
 
+type ValidationIssue = { location: string; code?: string; message?: string };
+function validationIssues(value: unknown): ValidationIssue[] {
+  if (!value || typeof value !== 'object') return [];
+  const object=value as Record<string,unknown>;
+  const error=object.error && typeof object.error==='object' ? object.error as Record<string,unknown> : null;
+  const details=error?.details && typeof error.details==='object' ? error.details as Record<string,unknown> : null;
+  const candidates=[object.issues,error?.issues,details?.issues];
+  const issues=candidates.find(Array.isArray) as unknown[]|undefined;
+  return (issues??[]).filter((item):item is ValidationIssue=>Boolean(item&&typeof item==='object'&&typeof (item as ValidationIssue).location==='string'));
+}
+
 export function RecipeStudioPage() {
   const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
   const [operations, setOperations] = useState<OperationSpec[]>([]);
@@ -60,8 +74,12 @@ export function RecipeStudioPage() {
   const [baseRecord, setBaseRecord] = useState<RecipeRecord | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [selection, setSelection] = useState<RecipeSelection>({ type: 'recipe' });
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [librarySelection, setLibrarySelection] = useState<LibrarySelection>(null);
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const [undoStack, setUndoStack] = useState<RecipeRecord[]>([]);
+  const [redoStack, setRedoStack] = useState<RecipeRecord[]>([]);
+  const [clipboard, setClipboard] = useState<GraphNodeSpec[]>([]);
 
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeKind, setRecipeKind] = useState<'all' | 'linear' | 'graph'>('all');
@@ -72,6 +90,7 @@ export function RecipeStudioPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ExecutionResponse | null>(null);
   const [validation, setValidation] = useState<unknown | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState('Preview');
   const [showNew, setShowNew] = useState(false);
   const [showRun, setShowRun] = useState(false);
@@ -112,6 +131,7 @@ export function RecipeStudioPage() {
     setSelection({ type: 'recipe' });
     setLibrarySelection(null);
     setPositions(new Map());
+    setUndoStack([]); setRedoStack([]); setSelectedNodeIds([]); setFocusNodeId(null);
     setResult(null); setValidation(null); setMessage(null); setError(null);
     for (const node of next.graph?.nodes ?? []) if (node.recipe) void cacheSubrecipe(node.recipe);
   };
@@ -152,7 +172,23 @@ export function RecipeStudioPage() {
   }, [recipes, recipeSearch, recipeKind, recipeSource]);
 
   const updateRecord = (next: RecipeRecord) => {
+    if (record && JSON.stringify(record)!==JSON.stringify(next)) setUndoStack((items)=>[...items,deepClone(record)].slice(-100));
+    setRedoStack([]);
     setRecord(next); setMessage(null); setError(null); setValidation(null);
+  };
+
+  const undo = () => {
+    if(!record||!undoStack.length)return;
+    const previous=undoStack[undoStack.length-1];
+    setRedoStack((items)=>[...items,deepClone(record)].slice(-100));
+    setUndoStack((items)=>items.slice(0,-1)); setRecord(deepClone(previous)); setSelectedNodeIds([]); setSelection({type:'recipe'}); setValidation(null); setError(null);
+  };
+
+  const redo = () => {
+    if(!record||!redoStack.length)return;
+    const next=redoStack[redoStack.length-1];
+    setUndoStack((items)=>[...items,deepClone(record)].slice(-100));
+    setRedoStack((items)=>items.slice(0,-1)); setRecord(deepClone(next)); setSelectedNodeIds([]); setSelection({type:'recipe'}); setValidation(null); setError(null);
   };
 
   const addLinearOperation = (spec: OperationSpec) => {
@@ -175,6 +211,91 @@ export function RecipeStudioPage() {
     updateRecord(next); setSelection({ type: 'node', id: node.id });
     if (node.recipe) void cacheSubrecipe(node.recipe);
   };
+
+  const addAnnotationNode = (type:'group'|'comment') => {
+    if(!record?.graph||record.readonly)return;
+    const members=type==='group'?selectedNodeIds.filter((id)=>record.graph!.nodes.some((node)=>node.id===id&&node.node_type!=='group'&&node.node_type!=='comment')):[];
+    if(type==='group'&&!members.length){setError('그룹으로 묶을 Graph Node를 Shift 클릭으로 먼저 선택하세요.');return;}
+    const id=uniqueId(type,record.graph.nodes.map((node)=>node.id));
+    const node:GraphNodeSpec=type==='group'?{id,node_type:'group',label:'New Group',members,inputs:{},params:{}}:{id,node_type:'comment',label:'Comment',text:'메모를 입력하세요.',inputs:{},params:{}};
+    const next=deepClone(record);if(type==='group')for(const existing of next.graph!.nodes)if(existing.node_type==='group')existing.members=(existing.members??[]).filter((member)=>!members.includes(member));next.graph!.nodes.push(node);updateRecord(next);setSelection({type:'node',id});setSelectedNodeIds([id]);
+    setPositions((current)=>{const positioned=new Map(current);positioned.set(id,{x:285,y:400});return positioned;});
+  };
+
+  const deleteNodeIds = (ids:string[]) => {
+    if(!record||record.readonly||!ids.length)return;
+    let next=deepClone(record);
+    if(next.kind==='graph'){
+      const removing=new Set(ids);
+      next.graph!.nodes=next.graph!.nodes.filter((node)=>!removing.has(node.id));
+      for(const node of next.graph!.nodes){
+        node.inputs=Object.fromEntries(Object.entries(node.inputs??{}).filter(([,ref])=>ref.type!=='node_output'||!removing.has(ref.node_id)));
+        if(node.node_type==='group')node.members=(node.members??[]).filter((id)=>!removing.has(id));
+      }
+      next.graph!.outputs=Object.fromEntries(Object.entries(next.graph!.outputs).filter(([,ref])=>ref.type!=='node_output'||!removing.has(ref.node_id)));
+    }else{
+      for(const id of ids)next=removeLinearStep(next,id);
+      next=cleanupLinearOrder(next);
+    }
+    updateRecord(next);setSelectedNodeIds([]);setSelection({type:'recipe'});
+  };
+
+  const copySelectedNodes = () => {
+    if(record?.kind!=='graph')return;
+    const nodes=record.graph!.nodes.filter((node)=>selectedNodeIds.includes(node.id)&&node.node_type!=='group');
+    setClipboard(deepClone(nodes));
+  };
+
+  const pasteNodes = () => {
+    if(!record?.graph||record.readonly||!clipboard.length)return;
+    const next=deepClone(record);const existing=next.graph!.nodes.map((node)=>node.id);const remap=new Map<string,string>();
+    for(const node of clipboard)remap.set(node.id,uniqueId(`${node.id}_copy`,[...existing,...remap.values()]));
+    const copies=deepClone(clipboard).map((node)=>{
+      node.id=remap.get(node.id)!;
+      node.inputs=Object.fromEntries(Object.entries(node.inputs??{}).map(([name,ref])=>[name,ref.type==='node_output'&&remap.has(ref.node_id)?{...ref,node_id:remap.get(ref.node_id)!}:ref]));
+      if(node.node_type==='group')node.members=(node.members??[]).map((id)=>remap.get(id)??id);
+      return node;
+    });
+    next.graph!.nodes.push(...copies);updateRecord(next);
+    const selected=copies.map((node)=>node.id);setSelectedNodeIds(selected);if(selected.length===1)setSelection({type:'node',id:selected[0]});
+    setPositions((current)=>{const positioned=new Map(current);clipboard.forEach((node,index)=>{const old=current.get(node.id)??{x:285+index*30,y:220+index*30};positioned.set(remap.get(node.id)!,{x:old.x+48,y:old.y+48});});return positioned;});
+  };
+
+  const autoLayout = () => {
+    if(!record)return;
+    const layout=new Map<string,{x:number;y:number}>();
+    if(record.kind==='linear'){
+      record.pipeline!.inputs.forEach((input,index)=>layout.set(`__input__${input.name}`,{x:20,y:70+index*110}));
+      record.pipeline!.steps.forEach((step,index)=>layout.set(step.id,{x:260+index*230,y:90+(index%2)*95}));
+      Object.keys(record.pipeline!.outputs).forEach((name,index)=>layout.set(`__output__${name}`,{x:Math.max(560,300+record.pipeline!.steps.length*230),y:70+index*100}));
+    }else{
+      const graph=record.graph!;const nodeMap=new Map(graph.nodes.map((node)=>[node.id,node]));const level=new Map<string,number>();const depth=(id:string,stack=new Set<string>()):number=>{
+        if(level.has(id))return level.get(id)!;if(stack.has(id))return 0;const node=nodeMap.get(id);if(!node)return 0;const parents=Object.values(node.inputs??{}).filter((ref)=>ref.type==='node_output').map((ref)=>ref.node_id).filter((parent)=>nodeMap.get(parent)?.node_type!=='group'&&nodeMap.get(parent)?.node_type!=='comment');
+        const result=parents.length?1+Math.max(...parents.map((parent)=>depth(parent,new Set([...stack,id])))):0;level.set(id,result);return result;
+      };
+      const lane=new Map<number,number>();for(const node of graph.nodes.filter((item)=>item.node_type!=='group'&&item.node_type!=='comment')){const x=depth(node.id);const row=lane.get(x)??0;lane.set(x,row+1);layout.set(node.id,{x:255+x*255,y:60+row*155});}
+      graph.inputs.forEach((input,index)=>layout.set(`__input__${input.name}`,{x:15,y:65+index*105}));
+      const end=Math.max(0,...Array.from(level.values()));Object.keys(graph.outputs).forEach((name,index)=>layout.set(`__output__${name}`,{x:300+(end+1)*255,y:65+index*105}));
+      graph.nodes.filter((node)=>node.node_type==='comment').forEach((node,index)=>layout.set(node.id,{x:265+index*240,y:460}));
+    }
+    setPositions(layout);setMessage('Canvas를 자동 배치했습니다.');
+  };
+
+  const actionRef=useRef({undo,redo,copySelectedNodes,pasteNodes});
+  actionRef.current={undo,redo,copySelectedNodes,pasteNodes};
+  useEffect(()=>{
+    const handler=(event:KeyboardEvent)=>{
+      const target=event.target as HTMLElement|null;
+      if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
+      const key=event.key.toLowerCase();
+      if((event.ctrlKey||event.metaKey)&&key==='z'){event.preventDefault();if(event.shiftKey)actionRef.current.redo();else actionRef.current.undo();}
+      else if((event.ctrlKey||event.metaKey)&&key==='y'){event.preventDefault();actionRef.current.redo();}
+      else if((event.ctrlKey||event.metaKey)&&key==='c'){event.preventDefault();actionRef.current.copySelectedNodes();}
+      else if((event.ctrlKey||event.metaKey)&&key==='v'){event.preventDefault();actionRef.current.pasteNodes();}
+      else if(event.key==='Escape'){setSelectedNodeIds([]);setSelection({type:'recipe'});}
+    };
+    window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);
+  },[]);
 
   const validate = async () => {
     if (!record) return;
@@ -333,6 +454,12 @@ export function RecipeStudioPage() {
 
   const outputImages = result ? Object.entries(result.output?.images ?? {}) : [];
   const intermediateImages = result ? Object.entries(result.intermediates ?? {}).flatMap(([step, out]) => Object.entries(out.images ?? {}).map(([name, img]) => [`${step}.${name}`, img] as const)) : [];
+  const invalidNodeIds=useMemo(()=>validationIssues(validation).map((issue)=>issue.location.match(/(?:nodes|steps)\.([a-z][a-z0-9_]*)/)?.[1]).filter((id):id is string=>Boolean(id)),[validation]);
+  const focusValidationIssue=(issue:ValidationIssue)=>{
+    const id=issue.location.match(/(?:nodes|steps)\.([a-z][a-z0-9_]*)/)?.[1];
+    if(!id)return;
+    setFocusNodeId(id);setSelection({type:'node',id});setSelectedNodeIds([id]);
+  };
 
   return <div className="page">
     <div className="page-toolbar recipe-toolbar">
@@ -379,12 +506,29 @@ export function RecipeStudioPage() {
           />
         </div>
 
-        <Panel title="Recipe Canvas" subtitle={record ? `${record.name} · ${record.kind}` : 'No recipe'} actions={record && <span className="panel-subtitle">Canvas 연결선 = 실제 input binding</span>} flush>
-          {record ? <StudioCanvas
-            record={record} operations={opMap} features={featureMap} operators={operatorMap} subrecipes={subrecipes}
-            positions={positions} onPositionChange={(id, position) => setPositions((prev) => { const next = new Map(prev); next.set(id, position); return next; })}
-            selection={selection} onSelectionChange={setSelection} onConnect={connect} onDeleteEdge={deleteEdge}
-          /> : <EmptyState>Recipe를 선택하거나 New Recipe를 생성하세요.</EmptyState>}
+        <Panel title="Recipe Canvas" subtitle={record ? `${record.name} · ${record.kind}` : 'No recipe'} flush>
+          {record ? <div className="studio-editor-panel">
+            <div className="studio-editor-toolbar">
+              <Button title="Undo (Ctrl+Z)" disabled={!undoStack.length||busy||record.readonly} onClick={undo}>↶ Undo</Button>
+              <Button title="Redo (Ctrl+Y)" disabled={!redoStack.length||busy||record.readonly} onClick={redo}>↷ Redo</Button>
+              <Button onClick={autoLayout} disabled={busy}>Auto layout</Button>
+              {record.kind==='graph' && <>
+                <Button onClick={copySelectedNodes} disabled={!selectedNodeIds.length}>Copy</Button>
+                <Button onClick={pasteNodes} disabled={!clipboard.length||record.readonly}>Paste</Button>
+                <Button onClick={()=>addAnnotationNode('group')} disabled={record.readonly||!selectedNodeIds.some((id)=>record.graph!.nodes.some((node)=>node.id===id&&node.node_type!=='group'&&node.node_type!=='comment'))}>Group</Button>
+                <Button onClick={()=>addAnnotationNode('comment')} disabled={record.readonly}>Comment</Button>
+              </>}
+              <Button variant="danger" onClick={()=>deleteNodeIds(selectedNodeIds)} disabled={!selectedNodeIds.length||record.readonly}>Delete selected</Button>
+              <span className="studio-editor-hint">Shift+클릭 다중 선택 · Ctrl+C/V 복사/붙여넣기</span>
+            </div>
+            <div className="studio-editor-canvas"><StudioCanvas
+              record={record} operations={opMap} features={featureMap} operators={operatorMap} subrecipes={subrecipes}
+              positions={positions} selectedNodeIds={selectedNodeIds} validationErrorNodeIds={invalidNodeIds} focusNodeId={focusNodeId}
+              onPositionChange={(id, position) => setPositions((prev) => { const next = new Map(prev); next.set(id, position); return next; })}
+              selection={selection} onSelectionChange={setSelection} onConnect={connect} onDeleteEdge={deleteEdge}
+              onMultiSelect={setSelectedNodeIds} onDeleteNodes={deleteNodeIds}
+            /></div>
+          </div> : <EmptyState>Recipe를 선택하거나 New Recipe를 생성하세요.</EmptyState>}
         </Panel>
 
         <InspectorPanel
@@ -399,7 +543,7 @@ export function RecipeStudioPage() {
             {previewTab === 'Preview' && (outputImages.length ? outputImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name} · {img.width}×{img.height} · {img.color_space}</span><SaveImageButton source={imageDataUrl(img)} fileName={name}/></div></div>) : <EmptyState>Run Draft를 실행하면 output image가 표시됩니다.</EmptyState>)}
             {previewTab === 'Intermediate' && (intermediateImages.length ? intermediateImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name} · {img.width}×{img.height}</span><SaveImageButton source={imageDataUrl(img)} fileName={name.replaceAll('.', '_')}/></div></div>) : <EmptyState>Intermediate 결과가 없습니다.</EmptyState>)}
             {previewTab === 'Data' && <pre className="json-view">{JSON.stringify(result?.output?.data ?? {}, null, 2)}</pre>}
-            {previewTab === 'Validation' && <pre className="json-view">{validation ? JSON.stringify(validation, null, 2) : 'Validate를 실행하면 결과가 표시됩니다.'}</pre>}
+            {previewTab === 'Validation' && <div className="validation-result-wrap">{validationIssues(validation).length>0&&<div className="validation-issue-list">{validationIssues(validation).map((issue,index)=><button type="button" className="validation-issue" key={`${issue.location}-${index}`} onClick={()=>focusValidationIssue(issue)}><strong>{issue.location}</strong><span>{issue.message??issue.code??'Validation error'}</span></button>)}</div>}<pre className="json-view">{validation ? JSON.stringify(validation, null, 2) : 'Validate를 실행하면 결과가 표시됩니다.'}</pre></div>}
             {previewTab === 'Logs' && <div className="log-view">{result ? `success=${result.success}\n${JSON.stringify(result.metadata ?? {}, null, 2)}\n${result.error ? JSON.stringify(result.error, null, 2) : ''}` : 'No execution yet.'}</div>}
           </div>
         </Panel>

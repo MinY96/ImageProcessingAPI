@@ -15,8 +15,10 @@ from src.workflow.errors import WorkflowValidationError
 from src.workflow.feature_registry import FeatureRegistry
 from src.workflow.operator_registry import ScalarOperatorRegistry
 from src.workflow.schemas import (
+    CommentNodeSpec,
     DecisionNodeSpec,
     FeatureNodeSpec,
+    GroupNodeSpec,
     GraphInputReference,
     GraphRecipeSpec,
     GraphValueReference,
@@ -213,6 +215,8 @@ class WorkflowExecutor:
         retain_intermediates: bool,
         recipe_stack: tuple[str, ...],
     ) -> OperationOutput:
+        if isinstance(node, (GroupNodeSpec, CommentNodeSpec)):
+            return OperationOutput()
         if isinstance(node, OperationNodeSpec):
             result = self._registry.execute(
                 operation=node.operation, inputs=inputs, params=node.params

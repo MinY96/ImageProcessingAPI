@@ -120,7 +120,7 @@ output을 여러 branch가 공유할 수 있고, ROI별 서로 다른 처리, fe
 최종 threshold 판정, linear/graph SubRecipe 재사용을 지원합니다.
 
 - Typed Port: `image`, `mask`, `profile`, `scalar`, `roi`, `boolean`, `decision` 등
-- Node: Operation, Feature, Scalar Operator, ROI Crop/Compose, Decision, SubRecipe
+- Node: Operation, Feature, Scalar Operator, ROI Crop/Compose, Decision, SubRecipe, Group/Comment annotation
 - Graph cycle 및 잘못된 port 연결을 실행 전에 검증
 - Feature Registry: pixel/profile/contour/image similarity/mask similarity
 - Scalar Operator Registry: 산술, ratio, abs diff, sum/mean/min/max, weighted sum/mean, normalize

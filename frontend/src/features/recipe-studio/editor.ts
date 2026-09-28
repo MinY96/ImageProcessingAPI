@@ -102,7 +102,7 @@ export function createDraftRecipe(input: {
 }
 
 export function nodeDisplayName(node: GraphNodeSpec): string {
-  return node.operation ?? node.feature ?? node.operator ?? node.recipe ?? node.node_type;
+  return node.operation ?? node.feature ?? node.operator ?? node.recipe ?? node.label ?? node.text ?? node.node_type;
 }
 
 export function nodeInterface(
@@ -161,6 +161,7 @@ export function nodeInterface(
       outputs: [{ name: 'output', kind: 'unknown' }],
     };
   }
+  if (node.node_type === 'group' || node.node_type === 'comment') return { inputs: [], outputs: [] };
   return { inputs: [], outputs: [] };
 }
 

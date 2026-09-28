@@ -37,6 +37,8 @@ class WorkflowNodeType(StrEnum):
     ROI_COMPOSE = "roi_compose"
     DECISION = "decision"
     SUBRECIPE = "subrecipe"
+    GROUP = "group"
+    COMMENT = "comment"
 
 
 class WorkflowPortSpec(BaseSchema):
@@ -116,6 +118,21 @@ class SubRecipeNodeSpec(WorkflowNodeBase):
     recipe_version: str | None = None
 
 
+class GroupNodeSpec(WorkflowNodeBase):
+    """Editor-only visual grouping; it has no runtime inputs or outputs."""
+
+    node_type: Literal[WorkflowNodeType.GROUP] = WorkflowNodeType.GROUP
+    label: str = Field(min_length=1, max_length=120)
+    members: list[str] = Field(default_factory=list, max_length=200)
+
+
+class CommentNodeSpec(WorkflowNodeBase):
+    """Editor-only note displayed on the workflow canvas."""
+
+    node_type: Literal[WorkflowNodeType.COMMENT] = WorkflowNodeType.COMMENT
+    text: str = Field(default="Comment", max_length=2000)
+
+
 WorkflowNodeSpec: TypeAlias = Annotated[
     OperationNodeSpec
     | FeatureNodeSpec
@@ -123,7 +140,9 @@ WorkflowNodeSpec: TypeAlias = Annotated[
     | RoiCropNodeSpec
     | RoiComposeNodeSpec
     | DecisionNodeSpec
-    | SubRecipeNodeSpec,
+    | SubRecipeNodeSpec
+    | GroupNodeSpec
+    | CommentNodeSpec,
     Field(discriminator="node_type"),
 ]
 
@@ -156,6 +175,22 @@ class GraphRecipeSpec(BaseSchema):
         node_ids = [item.id for item in self.nodes]
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("graph node ids must be unique")
+        node_by_id = {item.id: item for item in self.nodes}
+        grouped_members: set[str] = set()
+        for node in self.nodes:
+            if isinstance(node, GroupNodeSpec):
+                if len(node.members) != len(set(node.members)):
+                    raise ValueError(f"group members must be unique: {node.id}")
+                missing = sorted(set(node.members) - set(node_ids))
+                if missing:
+                    raise ValueError(f"group references unknown members: {missing}")
+                invalid = sorted(member for member in node.members if isinstance(node_by_id[member], (GroupNodeSpec, CommentNodeSpec)))
+                if invalid:
+                    raise ValueError(f"groups can contain workflow nodes only: {invalid}")
+                overlap = sorted(set(node.members) & grouped_members)
+                if overlap:
+                    raise ValueError(f"a workflow node can belong to one group only: {overlap}")
+                grouped_members.update(node.members)
         return self
 
 

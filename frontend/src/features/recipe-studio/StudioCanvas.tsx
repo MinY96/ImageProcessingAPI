@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Background,
   Controls,
@@ -6,10 +6,12 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  SelectionMode,
   type Connection,
   type Edge,
   type Node,
   type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -32,19 +34,22 @@ export type StudioNodeData = {
   outputs: Array<{ name: string; kind: string; exposed?: boolean }>;
   readonly?: boolean;
   pseudo?: 'input' | 'output';
+  annotation?: 'group' | 'comment';
+  body?: string;
+  validationError?: boolean;
 };
 
 type StudioFlowNode = Node<StudioNodeData, 'studio'>;
 
 function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
   const height = Math.max(data.inputs.length, data.outputs.length, 1) * 20 + 54;
-  return <div className={`studio-flow-node ${selected ? 'selected' : ''} ${data.pseudo ? `pseudo ${data.pseudo}` : ''}`} style={{ minHeight: height }}>
+  return <div className={`studio-flow-node ${selected ? 'selected' : ''} ${data.pseudo ? `pseudo ${data.pseudo}` : ''} ${data.annotation ? `annotation-${data.annotation}` : ''} ${data.validationError ? 'validation-error' : ''}`} style={{ minHeight: data.annotation==='comment' ? 92 : data.annotation==='group' ? '100%' : height }}>
     <div className="studio-node-head">
-      <span className="studio-node-type">{data.pseudo ? data.pseudo : data.nodeKind}</span>
+      <span className="studio-node-type">{data.annotation ?? (data.pseudo ? data.pseudo : data.nodeKind)}</span>
       <strong>{data.title}</strong>
       {data.readonly && <span className="studio-node-lock">RO</span>}
     </div>
-    <div className="studio-node-subtitle">{data.subtitle}</div>
+    {data.annotation ? <div className="studio-annotation-body">{data.body ?? data.subtitle}</div> : <div className="studio-node-subtitle">{data.subtitle}</div>}
     <div className="studio-port-grid">
       <div className="studio-port-column inputs">
         {data.inputs.map((port, index) => <div className="studio-port-row input" key={port.name}>
@@ -122,6 +127,9 @@ function graphNodes(
 ): StudioFlowNode[] {
   const graph = record.graph!;
   const nodes: StudioFlowNode[] = [];
+  const executable = graph.nodes.filter((node)=>node.node_type!=='group'&&node.node_type!=='comment');
+  const defaultPosition = (index:number) => ({ x:270+(index%4)*235, y:55+Math.floor(index/4)*165 });
+  const workPositions = new Map(executable.map((node,index)=>[node.id,positions.get(node.id)??defaultPosition(index)]));
   graph.inputs.forEach((input, index) => {
     const id = `__input__${input.name}`;
     nodes.push({
@@ -129,16 +137,28 @@ function graphNodes(
       data: { title: input.name, subtitle: input.required ? 'required' : 'optional', nodeKind: 'input', inputs: [], outputs: [{ name: 'value', kind: input.kind }], pseudo: 'input', readonly: record.readonly },
     });
   });
-  graph.nodes.forEach((node, index) => {
+  executable.forEach((node, index) => {
     const iface = nodeInterface(node, operations, features, operators, subrecipes);
     nodes.push({
-      id: node.id, type: 'studio', position: positions.get(node.id) ?? { x: 270 + (index % 4) * 235, y: 55 + Math.floor(index / 4) * 165 },
+      id: node.id, type: 'studio', position: workPositions.get(node.id)!,
       data: {
         title: node.id, subtitle: nodeDisplayName(node), nodeKind: node.node_type, readonly: record.readonly,
         inputs: iface.inputs.map((port) => ({ ...port, connected: Boolean(node.inputs?.[port.name]) })),
         outputs: iface.outputs.map((port) => ({ ...port, exposed: Object.values(graph.outputs).some((ref) => ref.type === 'node_output' && ref.node_id === node.id && ref.output_name === port.name) })),
       },
     });
+  });
+  graph.nodes.forEach((node,index)=>{
+    if(node.node_type==='comment'){
+      nodes.push({id:node.id,type:'studio',position:positions.get(node.id)??{x:280+(index%3)*245,y:390+Math.floor(index/3)*125},style:{width:220},data:{title:node.label??'Comment',subtitle:'',body:node.text??'',nodeKind:'comment',annotation:'comment',readonly:record.readonly,inputs:[],outputs:[]}});
+    } else if(node.node_type==='group'){
+      const children=(node.members??[]).map((id)=>workPositions.get(id)).filter((point):point is {x:number;y:number}=>Boolean(point));
+      const left=children.length?Math.min(...children.map((point)=>point.x))-28:positions.get(node.id)?.x??245;
+      const top=children.length?Math.min(...children.map((point)=>point.y))-46:positions.get(node.id)?.y??385;
+      const right=children.length?Math.max(...children.map((point)=>point.x))+220:left+320;
+      const bottom=children.length?Math.max(...children.map((point)=>point.y))+145:top+190;
+      nodes.push({id:node.id,type:'studio',position:{x:left,y:top},style:{width:Math.max(300,right-left),height:Math.max(170,bottom-top),zIndex:-1},draggable:false,data:{title:node.label??'Group',subtitle:'',body:`${node.members?.length??0}개 노드`,nodeKind:'group',annotation:'group',readonly:record.readonly,inputs:[],outputs:[]}});
+    }
   });
   Object.entries(graph.outputs).forEach(([name, ref], index) => {
     const id = `__output__${name}`;
@@ -213,11 +233,16 @@ export function StudioCanvas({
   operators,
   subrecipes,
   positions,
+  selectedNodeIds,
+  validationErrorNodeIds,
+  focusNodeId,
   onPositionChange,
   selection,
   onSelectionChange,
   onConnect,
   onDeleteEdge,
+  onMultiSelect,
+  onDeleteNodes,
 }: {
   record: RecipeRecord;
   operations: Map<string, OperationSpec>;
@@ -225,11 +250,16 @@ export function StudioCanvas({
   operators: Map<string, ScalarOperatorSpec>;
   subrecipes: Map<string, SubrecipeInterface>;
   positions: Map<string, { x: number; y: number }>;
+  selectedNodeIds: string[];
+  validationErrorNodeIds: string[];
+  focusNodeId?: string | null;
   onPositionChange: (id: string, position: { x: number; y: number }) => void;
   selection: RecipeSelection;
   onSelectionChange: (selection: RecipeSelection) => void;
   onConnect: (connection: Connection) => void;
   onDeleteEdge: (edge: Edge) => void;
+  onMultiSelect: (ids: string[]) => void;
+  onDeleteNodes: (ids: string[]) => void;
 }) {
   const nodes = useMemo(() => record.kind === 'linear'
     ? linearNodes(record, operations, positions)
@@ -237,32 +267,49 @@ export function StudioCanvas({
   [record, operations, features, operators, subrecipes, positions]);
   const edges = useMemo(() => record.kind === 'linear' ? linearEdges(record) : graphEdges(record), [record]);
   const selectedId = selection.type === 'node' ? selection.id : selection.type === 'input' ? `__input__${selection.name}` : selection.type === 'output' ? `__output__${selection.name}` : '';
-  const visibleNodes = nodes.map((node) => ({ ...node, selected: node.id === selectedId }));
+  const selectedSet = new Set(selectedNodeIds);
+  const visibleNodes: StudioFlowNode[] = nodes.map((node) => ({ ...node, selected: selectedSet.has(node.id) || node.id === selectedId, data: { ...node.data, validationError: validationErrorNodeIds.includes(node.id) } }));
   const workNodeCount = record.kind === 'linear' ? (record.pipeline?.steps.length ?? 0) : (record.graph?.nodes.length ?? 0);
   const inputCount = record.kind === 'linear' ? (record.pipeline?.inputs.length ?? 0) : (record.graph?.inputs.length ?? 0);
   const outputCount = record.kind === 'linear' ? Object.keys(record.pipeline?.outputs ?? {}).length : Object.keys(record.graph?.outputs ?? {}).length;
+  const flowRef = useRef<ReactFlowInstance<StudioFlowNode, Edge> | null>(null);
+  useEffect(() => {
+    if (!focusNodeId) return;
+    const node = nodes.find((item)=>item.id===focusNodeId);
+    if (node) flowRef.current?.setCenter(node.position.x+95,node.position.y+52,{duration:400,zoom:1});
+  }, [focusNodeId,nodes]);
 
   return <div className="react-flow-wrap">
     <div className="canvas-status-chip">{inputCount} input · {workNodeCount} {record.kind === 'linear' ? 'step' : 'node'} · {outputCount} output</div>
     {workNodeCount === 0 && <div className="canvas-empty-hint"><strong>Recipe Canvas is ready</strong>좌측 Node Library에서 Operation을 + 버튼 또는 더블클릭으로 추가하세요.<br/>Input node는 이미 생성되어 있으며 Node 추가 후 연결할 수 있습니다.</div>}
-    <ReactFlow
+    <ReactFlow<StudioFlowNode, Edge>
       key={`${record.name}:${record.kind}`}
       nodes={visibleNodes}
       edges={edges}
       nodeTypes={nodeTypes}
       fitView
       fitViewOptions={{ padding: 0.18 }}
+      selectionMode={SelectionMode.Partial}
+      multiSelectionKeyCode="Shift"
       minZoom={0.25}
       maxZoom={1.6}
       nodesConnectable={!record.readonly}
       edgesReconnectable={false}
       deleteKeyCode={record.readonly ? null : ['Backspace', 'Delete']}
-      onNodeClick={(_, node) => {
+      onInit={(instance)=>{flowRef.current=instance;}}
+      onNodeClick={(event, node) => {
+        if('shiftKey' in event && event.shiftKey)return;
         if (node.id.startsWith('__input__')) onSelectionChange({ type: 'input', name: node.id.slice('__input__'.length) });
         else if (node.id.startsWith('__output__')) onSelectionChange({ type: 'output', name: node.id.slice('__output__'.length) });
         else onSelectionChange({ type: 'node', id: node.id });
       }}
-      onPaneClick={() => onSelectionChange({ type: 'recipe' })}
+      onPaneClick={() => { onMultiSelect([]); onSelectionChange({ type: 'recipe' }); }}
+      onSelectionChange={({nodes: selected})=>{
+        const ids=selected.map((node)=>node.id).filter((id)=>!id.startsWith('__input__')&&!id.startsWith('__output__'));
+        onMultiSelect(ids);
+        if(ids.length===1)onSelectionChange({type:'node',id:ids[0]});
+      }}
+      onNodesDelete={(deleted)=>onDeleteNodes(deleted.map((node)=>node.id).filter((id)=>!id.startsWith('__input__')&&!id.startsWith('__output__')))}
       onNodesChange={(changes) => {
         for (const change of changes) {
           if (change.type === 'position' && change.position) onPositionChange(change.id, change.position);

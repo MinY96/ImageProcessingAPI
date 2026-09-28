@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { analysisApi, operationsApi, pipelinesApi, recipesApi, workflowApi, type EncodedImage, type ExecutionResponse, type FeatureSpec, type GraphRecipeSpec, type ImageAnalysisResult, type OperationSpec, type PipelineSpec, type RecipeRecord, type RecipeSummary, type ScalarOperatorSpec } from '../api';
 import { SaveImageButton } from '../components/SaveImageButton';
+import { ImageCanvas, type PixelRoi } from '../components/ImageCanvas';
 import { Button, EmptyState, Field, InlineError, Kpi, Panel, Tabs } from '../components/ui';
 import { errorMessage, imageDataUrl, number } from '../lib/format';
 
@@ -74,12 +75,13 @@ function AnalysisDetails({ analysis, active }: { analysis: ImageAnalysisResult |
 }
 
 function ImageViewer({
-  title, subtitle, src, saveSource, analysis, onAnalyze, loading, onApply, applyDisabled, fallback,
+  title, subtitle, src, saveSource, analysis, onAnalyze, loading, onApply, applyDisabled, fallback, roi, onRoiChange,
 }: {
   title: string; subtitle: string; src?: string; saveSource?: Blob | string | null;
   analysis: ImageAnalysisResult | null; onAnalyze?: () => void; loading?: boolean;
   onApply?: () => void; applyDisabled?: boolean;
   fallback?: ReactNode;
+  roi?: PixelRoi | null; onRoiChange?: (roi: PixelRoi, size: { width: number; height: number }) => void;
 }) {
   const [tab, setTab] = useState(ANALYSIS_TABS[0]);
   return <Panel title={title} subtitle={subtitle} className="lab-viewer" flush actions={<>
@@ -87,7 +89,7 @@ function ImageViewer({
     <SaveImageButton source={saveSource} fileName={subtitle || 'image'}/>
   </>}>
     <div className="lab-viewer-content">
-      <div className="lab-image-stage checkerboard">{src ? <img className="lab-image" src={src} alt={title}/> : fallback ?? <EmptyState>이미지를 불러오거나 Run을 실행하세요.</EmptyState>}</div>
+      <div className="lab-image-stage checkerboard">{src ? <ImageCanvas src={src} alt={title} roi={roi} onRoiChange={onRoiChange}/> : fallback ?? <EmptyState>이미지를 불러오거나 Run을 실행하세요.</EmptyState>}</div>
       <div className="lab-viewer-analysis"><Tabs items={ANALYSIS_TABS} active={tab} onChange={setTab}/><div className="lab-analysis-content"><AnalysisDetails analysis={analysis} active={tab}/></div></div>
       {onApply && <div className="lab-apply-row"><span>결과를 적용하면 현재 이미지가 갱신되고 이전 이미지는 History에 보관됩니다.</span><Button variant="primary" disabled={applyDisabled} onClick={onApply}>Apply</Button></div>}
     </div>
@@ -126,6 +128,7 @@ export function ImageLabPage() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<File[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedRoi, setSelectedRoi] = useState<PixelRoi | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -159,7 +162,20 @@ export function ImageLabPage() {
   }, [selectedOperator?.name]);
 
   const selectFile = (next: File | null) => {
-    setFile(next); setAnalysis(null); setOutputAnalysis(null); setOutputImage(null); setOutputFile(null); setExecution(null); setError(null);
+    setFile(next); setSelectedRoi(null); setAnalysis(null); setOutputAnalysis(null); setOutputImage(null); setOutputFile(null); setExecution(null); setError(null);
+  };
+
+  const selectLabRoi = (roi: PixelRoi, size: { width: number; height: number }) => {
+    setSelectedRoi(roi);
+    if (tab === 'Operation' && selectedOp?.name === 'remove_background') {
+      setParams((current)=>({...current,x:roi.x,y:roi.y,width:roi.width,height:roi.height}));
+    } else if (tab === 'Graph Nodes' && (graphNodeType === 'roi_crop' || graphNodeType === 'roi_compose')) {
+      const relative = graphParams.coordinate_mode === 'relative';
+      setGraphParams((current)=>({...current,
+        x:relative?roi.x/size.width:roi.x, y:relative?roi.y/size.height:roi.y,
+        width:relative?roi.width/size.width:roi.width, height:relative?roi.height/size.height:roi.height,
+      }));
+    }
   };
 
   const analyzeCurrent = async () => {
@@ -320,6 +336,7 @@ export function ImageLabPage() {
   const applyOutput = () => {
     if (!file || !outputFile) return;
     setHistory((items) => [file, ...items].slice(0, 20));
+    setSelectedRoi(null);
     setFile(outputFile);
     setAnalysis(outputAnalysis);
     setOutputImage(null); setOutputFile(null); setOutputAnalysis(null); setExecution(null);
@@ -329,6 +346,7 @@ export function ImageLabPage() {
     const restored = history[index];
     if (!restored) return;
     if (file) setHistory((items) => [file, ...items.filter((_, i) => i !== index)].slice(0, 20));
+    setSelectedRoi(null);
     setFile(restored); setAnalysis(null); setOutputImage(null); setOutputFile(null); setOutputAnalysis(null); setExecution(null);
     setHistoryOpen(false);
   };
@@ -346,7 +364,7 @@ export function ImageLabPage() {
     {error && <div className="status-strip"><InlineError message={error}/></div>}
     <div className="page-content lab-page-content">
       <div className="lab-workspace">
-        <ImageViewer title="Input Image Viewer" subtitle={file?.name ?? 'No image'} src={inputUrl || undefined} saveSource={file} analysis={analysis} onAnalyze={analyzeCurrent} loading={busy}/>
+        <ImageViewer title="Input Image Viewer" subtitle={file?.name ?? 'No image'} src={inputUrl || undefined} saveSource={file} analysis={analysis} onAnalyze={analyzeCurrent} loading={busy} roi={selectedRoi} onRoiChange={(tab==='Graph Nodes'&&(graphNodeType==='roi_crop'||graphNodeType==='roi_compose'))||(tab==='Operation'&&selectedOp?.name==='remove_background')?selectLabRoi:undefined}/>
         <Panel title="Settings" subtitle="Single image · Workflow components" className="lab-settings" flush>
           <Tabs items={LAB_MODES} active={tab} onChange={setTab}/>
           <div className="lab-settings-scroll">

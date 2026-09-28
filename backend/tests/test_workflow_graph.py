@@ -350,3 +350,43 @@ def test_persisted_graph_subrecipe_load_order_is_dependency_safe(tmp_path):
     assert detail.status_code == 200
     assert executed.status_code == 200
     assert executed.json()["success"] is True
+
+
+def test_group_and_comment_nodes_persist_as_annotations_and_do_not_change_execution(tmp_path):
+    _, base_payload, files = image_upload_payload(retain_intermediates=True)
+    payload = json.loads(base_payload)
+    payload["graph"] = {
+        "name": "annotated_graph",
+        "display_name": "Annotated Graph",
+        "inputs": [{"name": "image", "kind": "image"}],
+        "nodes": [
+            {
+                "id": "gray",
+                "node_type": "operation",
+                "operation": "convert_color",
+                "inputs": {"image": {"type": "graph_input", "input_name": "image"}},
+                "params": {"target_color_space": "gray"},
+            },
+            {"id": "group", "node_type": "group", "label": "Preprocessing", "members": ["gray"]},
+            {"id": "note", "node_type": "comment", "text": "Review contrast before thresholding."},
+        ],
+        "outputs": {"image": {"type": "node_output", "node_id": "gray", "output_name": "image"}},
+    }
+
+    settings=make_settings(tmp_path)
+    with TestClient(create_app(settings=settings)) as client:
+        created=client.post("/api/v1/recipes",json={"kind":"graph","graph":payload["graph"]})
+        assert created.status_code==201
+    with TestClient(create_app(settings=settings)) as client:
+        detail=client.get("/api/v1/recipes/annotated_graph")
+        run_payload=json.dumps({"image_inputs":[{"input_name":"image","file_index":0}],"retain_intermediates":True})
+        response=client.post("/api/v1/recipes/annotated_graph/execute",data={"payload":run_payload},files=files)
+
+    assert detail.status_code==200
+    assert {node["node_type"] for node in detail.json()["graph"]["nodes"]}=={"operation","group","comment"}
+    assert response.status_code == 200
+    result = response.json()
+    assert result["success"] is True
+    assert "image" in result["output"]["images"]
+    assert {node["node_id"] for node in result["nodes"]} == {"gray", "group", "note"}
+    assert all(node["success"] for node in result["nodes"])

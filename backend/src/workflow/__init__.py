@@ -11,9 +11,11 @@ from .executor import WorkflowExecutor
 from .feature_registry import FeatureRegistry, create_default_feature_registry
 from .operator_registry import ScalarOperatorRegistry, create_default_scalar_operator_registry
 from .schemas import (
+    CommentNodeSpec,
     DecisionNodeSpec,
     FeatureNodeSpec,
     FeatureSpec,
+    GroupNodeSpec,
     GraphInputReference,
     GraphRecipeSpec,
     GraphValueReference,

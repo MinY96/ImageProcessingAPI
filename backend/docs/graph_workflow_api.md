@@ -140,6 +140,19 @@ score = 0.45 * foreground_ratio
 `recipe_version`을 지정하면 현재 등록된 recipe version과 다를 때 validation에 실패합니다.
 SubRecipe dependency에서도 cycle을 검사하여 `A -> B -> A` 형태를 차단합니다.
 
+### Group / Comment (Canvas annotation)
+
+`group`과 `comment`는 Recipe Studio Canvas의 시각적 정리를 위한 annotation node입니다.
+실행 시 입력/출력 데이터에 영향을 주지 않고 no-op으로 처리됩니다. Group에는 `label`과
+포함 Node ID 목록인 `members`가, Comment에는 `text`가 저장됩니다.
+
+```json
+{"id":"preprocess_group","node_type":"group","label":"Preprocessing","members":["gray","blur"]}
+{"id":"review_note","node_type":"comment","text":"Check the edge response before thresholding."}
+```
+
+Node ID와 Group 구성원은 graph validation에서 확인하며, Node는 한 Group에만 포함될 수 있습니다.
+
 ## 5. Built-in Graph Recipe 예시
 
 ### `rule_branch_binary_score`

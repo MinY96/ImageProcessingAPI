@@ -102,6 +102,9 @@ export type GraphNodeSpec = {
   recipe?: string;
   recipe_kind?: string;
   recipe_version?: string;
+  label?: string;
+  text?: string;
+  members?: string[];
 };
 
 export type GraphRecipeSpec = {

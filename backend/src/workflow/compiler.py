@@ -12,8 +12,10 @@ from src.workflow.errors import WorkflowNotFoundError, WorkflowValidationError
 from src.workflow.feature_registry import FeatureRegistry
 from src.workflow.operator_registry import ScalarOperatorRegistry
 from src.workflow.schemas import (
+    CommentNodeSpec,
     DecisionNodeSpec,
     FeatureNodeSpec,
+    GroupNodeSpec,
     GraphInputReference,
     GraphRecipeSpec,
     GraphValueReference,
@@ -175,6 +177,13 @@ class WorkflowCompiler:
         issues: list[WorkflowValidationIssue],
         recipe_stack: tuple[str, ...],
     ) -> dict[str, WorkflowDataKind]:
+        if isinstance(node, (GroupNodeSpec, CommentNodeSpec)):
+            if node.inputs:
+                issues.append(WorkflowValidationIssue(
+                    location=f"nodes.{node.id}.inputs", code="annotation_has_no_inputs",
+                    message="group and comment nodes are editor annotations and do not accept bindings",
+                ))
+            return {}
         if isinstance(node, OperationNodeSpec):
             return self._validate_operation(node, input_kinds, node_output_kinds, issues)
         if isinstance(node, FeatureNodeSpec):
