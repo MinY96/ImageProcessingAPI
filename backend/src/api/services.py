@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from src.analysis import ImageAnalyzer
 from src.labeling import LabelService
-from src.evaluation import EvaluationService, TestDatasetService
+from src.evaluation import EvaluationJobManager, EvaluationService, TestDatasetService
 from src.machine_learning import ModelRegistry
 from src.pipeline import PipelineCatalog, PipelineExecutor
 from src.recipe import RecipeService
@@ -33,5 +33,6 @@ class ApiServices:
     label_service: LabelService
     test_dataset_service: TestDatasetService
     evaluation_service: EvaluationService
+    evaluation_job_manager: EvaluationJobManager
     synthetic_service: SyntheticService
     settings: ApiSettings

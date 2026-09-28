@@ -7,11 +7,14 @@ from src.evaluation import (
     BatchGroundTruthRequest,
     DuplicateTestDatasetError,
     EvaluationPrediction,
+    EvaluationJobAccepted,
+    EvaluationActiveError,
     EvaluationRequest,
     EvaluationResultPage,
     EvaluationRun,
     EvaluationRunNotFoundError,
     EvaluationRunSummary,
+    EvaluationStatus,
     EvaluationStoreError,
     EvaluationValidationError,
     FolderImportRequest,
@@ -41,6 +44,8 @@ def _evaluation_error(exc: Exception) -> ApiRequestError:
         return ApiRequestError(code="test_dataset_already_exists", message=str(exc), status_code=409)
     if isinstance(exc, TestDatasetRevisionConflictError):
         return ApiRequestError(code="test_dataset_revision_conflict", message=str(exc), status_code=409)
+    if isinstance(exc, EvaluationActiveError):
+        return ApiRequestError(code="evaluation_active", message=str(exc), status_code=409)
     if isinstance(exc, EvaluationValidationError):
         return ApiRequestError(code="evaluation_validation_error", message=str(exc), status_code=422)
     if isinstance(exc, ValueError):
@@ -194,19 +199,42 @@ def create_evaluation_router(prefix: str, get_services) -> APIRouter:
         services: Annotated[ApiServices, Depends(get_services)],
         dataset_id: Annotated[str | None, Query()] = None,
         recipe_name: Annotated[str | None, Query()] = None,
+        status_filter: Annotated[EvaluationStatus | None, Query(alias="status")] = None,
     ):
         try:
-            return services.evaluation_service.list(dataset_id=dataset_id, recipe_name=recipe_name)
+            runs = services.evaluation_job_manager.load_all()
+            if dataset_id is not None:
+                runs = [run for run in runs if run.dataset.dataset_id == dataset_id]
+            if recipe_name is not None:
+                runs = [run for run in runs if run.recipe.name == recipe_name]
+            if status_filter is not None:
+                runs = [run for run in runs if run.status == status_filter]
+            runs.sort(key=lambda run: (run.created_at, run.evaluation_id), reverse=True)
+            return [
+                EvaluationRunSummary(
+                    evaluation_id=run.evaluation_id,
+                    status=run.status,
+                    progress=run.progress,
+                    dataset=run.dataset,
+                    recipe=run.recipe,
+                    summary=run.summary,
+                    created_at=run.created_at,
+                    started_at=run.started_at,
+                    finished_at=run.finished_at,
+                    failure=run.failure,
+                )
+                for run in runs
+            ]
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 
-    @evaluations.post("", response_model=EvaluationRun, status_code=status.HTTP_201_CREATED)
+    @evaluations.post("", response_model=EvaluationJobAccepted, status_code=status.HTTP_202_ACCEPTED)
     def create_evaluation(
         request: EvaluationRequest,
         services: Annotated[ApiServices, Depends(get_services)],
     ):
         try:
-            return services.evaluation_service.create(request)
+            return services.evaluation_job_manager.submit(request)
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 
@@ -216,7 +244,7 @@ def create_evaluation_router(prefix: str, get_services) -> APIRouter:
         services: Annotated[ApiServices, Depends(get_services)],
     ):
         try:
-            return services.evaluation_service.get(evaluation_id)
+            return services.evaluation_job_manager.get(evaluation_id)
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 
@@ -226,10 +254,20 @@ def create_evaluation_router(prefix: str, get_services) -> APIRouter:
         services: Annotated[ApiServices, Depends(get_services)],
     ) -> Response:
         try:
-            services.evaluation_service.delete(evaluation_id)
+            services.evaluation_job_manager.delete(evaluation_id)
         except Exception as exc:
             raise _evaluation_error(exc) from exc
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @evaluations.post("/{evaluation_id}/cancel", response_model=EvaluationRun)
+    def cancel_evaluation(
+        evaluation_id: str,
+        services: Annotated[ApiServices, Depends(get_services)],
+    ):
+        try:
+            return services.evaluation_job_manager.cancel(evaluation_id)
+        except Exception as exc:
+            raise _evaluation_error(exc) from exc
 
     @evaluations.get("/{evaluation_id}/results", response_model=EvaluationResultPage)
     def get_evaluation_results(
@@ -243,15 +281,17 @@ def create_evaluation_router(prefix: str, get_services) -> APIRouter:
         errors_only: Annotated[bool, Query()] = False,
     ):
         try:
-            return services.evaluation_service.results(
-                evaluation_id,
-                offset=offset,
-                limit=limit,
-                prediction=prediction,
-                ground_truth=ground_truth,
-                correct=correct,
-                errors_only=errors_only,
-            )
+            run = services.evaluation_job_manager.get(evaluation_id)
+            items = run.results
+            if prediction is not None:
+                items = [item for item in items if item.prediction == prediction]
+            if ground_truth is not None:
+                items = [item for item in items if item.ground_truth == ground_truth]
+            if correct is not None:
+                items = [item for item in items if item.correct is correct]
+            if errors_only:
+                items = [item for item in items if item.prediction == EvaluationPrediction.ERROR]
+            return EvaluationResultPage(items=items[offset:offset + limit], total=len(items), offset=offset, limit=limit)
         except Exception as exc:
             raise _evaluation_error(exc) from exc
 

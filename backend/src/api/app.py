@@ -12,6 +12,7 @@ from src.analysis import ImageAnalyzer
 from src.labeling import LabelService, LabelStore
 from src.evaluation import (
     EvaluationEngine,
+    EvaluationJobManager,
     EvaluationRunStore,
     EvaluationService,
     TestDatasetService,
@@ -105,10 +106,17 @@ def create_app(
         workflow_catalog=workflow_catalog,
         max_image_pixels=resolved_settings.max_image_pixels,
     )
+    evaluation_store = EvaluationRunStore(resolved_settings.evaluation_store_dir)
     evaluation_service = EvaluationService(
         dataset_service=test_dataset_service,
         engine=evaluation_engine,
-        store=EvaluationRunStore(resolved_settings.evaluation_store_dir),
+        store=evaluation_store,
+    )
+    evaluation_job_manager = EvaluationJobManager(
+        dataset_service=test_dataset_service,
+        engine=evaluation_engine,
+        store=evaluation_store,
+        worker_count=resolved_settings.evaluation_worker_count,
     )
     synthetic_service = SyntheticService(
         asset_store=SyntheticAssetStore(resolved_settings.synthetic_asset_store_dir),
@@ -135,6 +143,7 @@ def create_app(
         label_service=label_service,
         test_dataset_service=test_dataset_service,
         evaluation_service=evaluation_service,
+        evaluation_job_manager=evaluation_job_manager,
         synthetic_service=synthetic_service,
         settings=resolved_settings,
     )
@@ -142,8 +151,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.services = services
-        yield
-        del app.state.services
+        evaluation_job_manager.start()
+        try:
+            yield
+        finally:
+            evaluation_job_manager.shutdown()
+            del app.state.services
 
     app = FastAPI(
         title="Image Processing API",

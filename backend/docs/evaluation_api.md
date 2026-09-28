@@ -119,6 +119,8 @@ PUT /api/v1/test-datasets/{dataset_id}/ground-truth
 POST /api/v1/evaluations
 ```
 
+평가 제출은 `202 Accepted`와 `evaluation_id`를 즉시 반환하며 worker가 별도 스레드에서 실행합니다. 진행 상태는 `GET /api/v1/evaluations/{evaluation_id}` 또는 목록 API로 확인할 수 있습니다. 취소는 `POST /api/v1/evaluations/{evaluation_id}/cancel`을 사용하고, 목록은 `?status=queued|running|completed|failed|cancelled`로 필터링할 수 있습니다.
+
 ```json
 {
   "dataset_id": "sem_bridge_validation_01",

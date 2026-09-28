@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 import cv2
 import numpy as np
@@ -76,6 +77,17 @@ def _create_recipe(client: TestClient) -> None:
         json={"kind": "graph", "graph": graph.model_dump(mode="json"), "tags": ["test"]},
     )
     assert response.status_code == 201, response.text
+
+
+def _wait_for_terminal_run(client: TestClient, evaluation_id: str, timeout: float = 5.0):
+    deadline = time.monotonic() + timeout
+    response = client.get(f"/api/v1/evaluations/{evaluation_id}")
+    while response.status_code == 200 and response.json()["status"] in {"queued", "running", "cancel_requested"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        response = client.get(f"/api/v1/evaluations/{evaluation_id}")
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] in {"completed", "failed", "cancelled"}
+    return response.json()
 
 
 def test_dataset_folder_import_auto_labels_and_batch_update(tmp_path: Path):
@@ -180,8 +192,8 @@ def test_evaluation_confusion_metrics_result_filtering_and_persistence(tmp_path:
                 "capture_node_values": True,
             },
         )
-        assert executed.status_code == 201, executed.text
-        run = executed.json()
+        assert executed.status_code == 202, executed.text
+        run = _wait_for_terminal_run(client, executed.json()["evaluation_id"])
         matrix = run["summary"]["confusion_matrix"]
         assert matrix == {"tp": 1, "tn": 1, "fp": 1, "fn": 1}
         metrics = run["summary"]["metrics"]
@@ -215,6 +227,12 @@ def test_evaluation_confusion_metrics_result_filtering_and_persistence(tmp_path:
         listed = client.get("/api/v1/evaluations").json()
         assert len(listed) == 1
         assert listed[0]["evaluation_id"] == eval_id
+        completed_only = client.get("/api/v1/evaluations", params={"status": "completed"})
+        assert completed_only.status_code == 200
+        assert [item["evaluation_id"] for item in completed_only.json()] == [eval_id]
+        queued_only = client.get("/api/v1/evaluations", params={"status": "queued"})
+        assert queued_only.status_code == 200
+        assert queued_only.json() == []
         fetched = client.get(f"/api/v1/evaluations/{eval_id}")
         assert fetched.status_code == 200
         assert fetched.json()["summary"]["confusion_matrix"] == matrix
@@ -244,8 +262,8 @@ def test_evaluation_marks_missing_file_as_error(tmp_path: Path):
             "/api/v1/evaluations",
             json={"dataset_id": "errors", "recipe_name": "evaluation_mean_rule"},
         )
-        assert executed.status_code == 201, executed.text
-        body = executed.json()
+        assert executed.status_code == 202, executed.text
+        body = _wait_for_terminal_run(client, executed.json()["evaluation_id"])
         assert body["summary"]["error_images"] == 1
         assert body["summary"]["evaluated_images"] == 1
         assert body["summary"]["execution_success_rate"] == 0.5
@@ -253,6 +271,41 @@ def test_evaluation_marks_missing_file_as_error(tmp_path: Path):
         assert len(errors) == 1
         assert errors[0]["correct"] is None
         assert errors[0]["error"] is not None
+
+
+def test_evaluation_cancel_endpoint_and_status_filter(tmp_path: Path, monkeypatch):
+    image_path = tmp_path / "cancel.png"
+    _write_gray(image_path, 0)
+    with _client(tmp_path) as client:
+        _create_recipe(client)
+        assert client.post("/api/v1/test-datasets", json={"dataset_id": "cancel_set", "name": "Cancel Set"}).status_code == 201
+        added = client.post(
+            "/api/v1/test-datasets/cancel_set/images",
+            json={"file_paths": [str(image_path)], "ground_truth": "OK"},
+        )
+        assert added.status_code == 200, added.text
+
+        manager = client.app.state.services.evaluation_job_manager
+        engine = manager._engine
+        original_run = engine.run
+
+        def delayed_run(*args, **kwargs):
+            time.sleep(0.2)
+            return original_run(*args, **kwargs)
+
+        monkeypatch.setattr(engine, "run", delayed_run)
+        submitted = client.post("/api/v1/evaluations", json={"dataset_id": "cancel_set", "recipe_name": "evaluation_mean_rule"})
+        assert submitted.status_code == 202, submitted.text
+        evaluation_id = submitted.json()["evaluation_id"]
+
+        cancelled = client.post(f"/api/v1/evaluations/{evaluation_id}/cancel")
+        assert cancelled.status_code == 200, cancelled.text
+        terminal = _wait_for_terminal_run(client, evaluation_id)
+        assert terminal["status"] == "cancelled"
+
+        filtered = client.get("/api/v1/evaluations", params={"status": "cancelled"})
+        assert filtered.status_code == 200
+        assert [item["evaluation_id"] for item in filtered.json()] == [evaluation_id]
 
 
 def test_evaluation_rejects_unlabeled_dataset_and_non_decision_graph(tmp_path: Path):

@@ -150,7 +150,8 @@ def test_list_and_get_operations(client):
     assert response.status_code == 200
     names = [item["name"] for item in response.json()]
     assert names == sorted(names)
-    assert len(names) == 64
+    assert len(names) == 65
+    assert "remove_background" in names
     assert {
         "adjust_tone",
         "apply_3d_lut",

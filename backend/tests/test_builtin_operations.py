@@ -59,6 +59,7 @@ def test_default_registry_contains_builtin_operations():
         "morphology",
         "orb_features",
         "pencil_sketch",
+        "remove_background",
         "resize",
         "rotate",
         "scharr",

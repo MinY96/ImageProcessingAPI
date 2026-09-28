@@ -17,6 +17,7 @@ import {
   type ScalarOperatorSpec,
 } from '../api';
 import { Badge, Button, EmptyState, InlineError, Loading, Panel, SearchInput, Tabs } from '../components/ui';
+import { SaveImageButton } from '../components/SaveImageButton';
 import {
   createDraftRecipe,
   deepClone,
@@ -395,8 +396,8 @@ export function RecipeStudioPage() {
         <Panel className="preview-panel" flush>
           <Tabs items={['Preview', 'Intermediate', 'Data', 'Validation', 'Logs']} active={previewTab} onChange={setPreviewTab}/>
           <div className="preview-grid api-preview-grid">
-            {previewTab === 'Preview' && (outputImages.length ? outputImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name}</span><span>{img.width}×{img.height} · {img.color_space}</span></div></div>) : <EmptyState>Run Draft를 실행하면 output image가 표시됩니다.</EmptyState>)}
-            {previewTab === 'Intermediate' && (intermediateImages.length ? intermediateImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name}</span><span>{img.width}×{img.height}</span></div></div>) : <EmptyState>Intermediate 결과가 없습니다.</EmptyState>)}
+            {previewTab === 'Preview' && (outputImages.length ? outputImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name} · {img.width}×{img.height} · {img.color_space}</span><SaveImageButton source={imageDataUrl(img)} fileName={name}/></div></div>) : <EmptyState>Run Draft를 실행하면 output image가 표시됩니다.</EmptyState>)}
+            {previewTab === 'Intermediate' && (intermediateImages.length ? intermediateImages.map(([name, img]) => <div className="preview-card" key={name}><div className="preview-image real"><img src={imageDataUrl(img)} alt={name}/></div><div className="preview-caption"><span>{name} · {img.width}×{img.height}</span><SaveImageButton source={imageDataUrl(img)} fileName={name.replaceAll('.', '_')}/></div></div>) : <EmptyState>Intermediate 결과가 없습니다.</EmptyState>)}
             {previewTab === 'Data' && <pre className="json-view">{JSON.stringify(result?.output?.data ?? {}, null, 2)}</pre>}
             {previewTab === 'Validation' && <pre className="json-view">{validation ? JSON.stringify(validation, null, 2) : 'Validate를 실행하면 결과가 표시됩니다.'}</pre>}
             {previewTab === 'Logs' && <div className="log-view">{result ? `success=${result.success}\n${JSON.stringify(result.metadata ?? {}, null, 2)}\n${result.error ? JSON.stringify(result.error, null, 2) : ''}` : 'No execution yet.'}</div>}

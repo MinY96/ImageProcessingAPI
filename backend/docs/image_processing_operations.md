@@ -74,6 +74,7 @@ HTTP API에서는 `multipart/form-data`의 `payload`에 JSON 문자열을 넣고
 | Contour | `find_contours` | GRAY/BINARY uint8 | 주석 이미지, contour, features |
 | Segmentation | `watershed` | BGR uint8 | 경계 이미지, int32 labels |
 | Segmentation | `grabcut` | BGR uint8 | foreground, binary mask |
+| Segmentation | `remove_background` | BGR/BGRA uint8 | transparent BGRA foreground, binary mask |
 | Segmentation | `kmeans_segmentation` | image | 양자화 이미지, int32 labels, centers |
 | Detection | `hough_lines_p` | GRAY/BINARY uint8 | 주석 이미지, lines |
 | Detection | `hough_circles` | GRAY uint8 | 주석 이미지, circles |
@@ -186,6 +187,8 @@ result = registry.execute(
 ```
 
 사각형은 이미지 내부에 완전히 포함되어야 합니다.
+
+`remove_background`도 같은 사각형을 GrabCut 초기 전경 영역으로 사용합니다. `edge_feather`로 경계를 부드럽게 하고, `image` output의 BGRA 알파 채널을 유지한 투명 PNG를 만들 수 있습니다. 피사체와 배경의 색/질감이 겹치면 결과 마스크를 확인하고 ROI를 더 좁혀 다시 실행하세요.
 
 ### Template Matching
 

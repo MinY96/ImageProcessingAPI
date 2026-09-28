@@ -141,9 +141,11 @@ from .registration import (
 from .segmentation import (
     GRABCUT_SPEC,
     KMEANS_SEGMENTATION_SPEC,
+    REMOVE_BACKGROUND_SPEC,
     WATERSHED_SPEC,
     grabcut_handler,
     kmeans_segmentation_handler,
+    remove_background_handler,
     watershed_handler,
 )
 from .threshold import (
@@ -222,6 +224,7 @@ def register_builtin_operations(
         (HOG_DESCRIPTOR_SPEC, hog_descriptor_handler),
         (WATERSHED_SPEC, watershed_handler),
         (GRABCUT_SPEC, grabcut_handler),
+        (REMOVE_BACKGROUND_SPEC, remove_background_handler),
         (KMEANS_SEGMENTATION_SPEC, kmeans_segmentation_handler),
         (HOUGH_LINES_P_SPEC, hough_lines_p_handler),
         (HOUGH_CIRCLES_SPEC, hough_circles_handler),

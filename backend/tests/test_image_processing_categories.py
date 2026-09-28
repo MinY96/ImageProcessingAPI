@@ -44,7 +44,7 @@ def test_registry_exposes_exactly_requested_categories(registry):
         for spec in registry.list_specs()
     )
 
-    assert len(registry.list_specs()) == 64
+    assert len(registry.list_specs()) == 65
     assert set(categories) == {
         "adjustment",
         "annotation",

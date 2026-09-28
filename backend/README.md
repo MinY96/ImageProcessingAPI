@@ -44,7 +44,7 @@ OpenCV 기반 이미지 처리 기능을 공통 스키마, 검증기, Registry �
 
 OpenCV 4.14 계열의 Image Processing, GUI, Feature2D, Machine Learning 기능을
 기준 기능에 사진 편집·합성·OpenCV Photo 연산을 더해 기본 Registry에
-64개 operation을 등록했습니다.
+65개 operation을 등록했습니다.
 
 | 카테고리 | Operation |
 |---|---|
@@ -61,7 +61,7 @@ OpenCV 4.14 계열의 Image Processing, GUI, Feature2D, Machine Learning 기능�
 | Geometry | `resize`, `rotate`, `flip`, `warp_affine`, `warp_perspective` |
 | Histogram | `histogram`, `equalize_histogram`, `clahe` |
 | Contour | `find_contours` |
-| Segmentation | `watershed`, `grabcut`, `kmeans_segmentation` |
+| Segmentation | `watershed`, `grabcut`, `remove_background`, `kmeans_segmentation` |
 | Detection | `hough_lines_p`, `hough_circles` |
 | Transform | `dft_spectrum`, `image_pyramid` |
 | Feature | `harris_corners`, `shi_tomasi_corners`, `fast_keypoints`, `sift_features`, `surf_features`, `brief_descriptors`, `orb_features`, `hog_descriptor` |

@@ -23,11 +23,10 @@ React + TypeScript + Vite 기반 Image Processing Studio 프론트엔드입니�
   - Recipe input별 이미지·모델·JSON 실행 입력 매핑
   - Validation 오류 / Output / Intermediate image 확인
 - `/image-lab`
-  - 이미지 업로드
-  - Image Analysis
-  - Single Operation 실행
-  - Built-in Pipeline / User Recipe Quick Run
-  - 실제 Histogram / Statistics / Feature 결과 표시
+  - 입력 Viewer → Operation/Quick Run 설정 → 결과 Viewer 흐름
+  - 양쪽 Viewer의 Histogram / Statistics / Feature / Image Analysis
+  - 결과 적용 후 입력 갱신 및 접기 가능한 History
+  - Viewer 결과 저장
 - `/synthetic-ng`
   - Synthetic method 조회
   - Procedural / CutPaste / Alpha Blend / Seamless Clone / Asset Composite / Diffusion Inpaint 실행
@@ -177,6 +176,9 @@ src/api/
 
 TestDataset API는 이미지 경로/metadata는 반환하지만 image binary/thumbnail endpoint는 아직 제공하지 않습니다.
 따라서 Dataset 화면에서는 가짜 thumbnail을 만들지 않고 실제 file metadata를 표시합니다.
+
+ROI 드래그 선택과 이미지 저장의 브라우저별 동작은
+[`docs/UI_UX_REVIEW.md`](docs/UI_UX_REVIEW.md)를 참고하세요.
 
 ### Annotation canvas
 
